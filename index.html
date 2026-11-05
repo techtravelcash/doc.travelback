@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1" name="viewport"/>
+    <title>TravelCash Tech Docs</title>
+    <style>
+        :root {
+          --bg: #0b1020;
+          --panel: #0f152b;
+          --muted: #9fb0d0;
+          --text: #e8eeff;
+          --accent: #61dafb;
+          --border: #223058;
+          --code: #0a0f1d;
+          --shadow: 0 8px 24px rgba(3,7,18,.35);
+        }
+        * { box-sizing: border-box; }
+        html, body { margin:0; padding:0; height:100%; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+        .wrapper { display:grid; grid-template-columns: 300px 1fr; min-height:100vh; }
+        aside { background:linear-gradient(180deg,#0c1226,#0b1121); border-right:1px solid var(--border); padding:20px; position:sticky; top:0; height:100vh; }
+        main { padding:32px 40px 96px; max-width: 1000px; }
+        .brand { display:flex; align-items:center; gap:12px; margin-bottom:24px; }
+        .brand img { height:36px; }
+        .nav h4 { color:#bcd0ff; opacity:.9; margin:20px 0 8px; }
+        .nav a { display:block; padding:10px; border-radius:8px; color:var(--muted); text-decoration:none; margin-bottom:4px; transition: 0.2s; }
+        .nav a:hover { background:#0d1430; color:var(--text); }
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 30px; }
+        .card { background: linear-gradient(180deg,#0f152b,#0d142a); border: 1px solid var(--border); border-radius: 16px; padding: 24px; text-decoration: none; color: inherit; transition: 0.3s; box-shadow: var(--shadow); }
+        .card:hover { border-color: var(--accent); transform: translateY(-5px); }
+        .card h3 { margin-top: 0; color: var(--accent); }
+        .card p { color: var(--muted); font-size: 14px; line-height: 1.5; }
+        .pill { border:1px solid var(--border); border-radius:999px; padding:4px 10px; color:#cde0ff; background:#0a0f1d; font-size:12px; }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <aside>
+            <div class="brand">
+                <img alt="TravelCash Logo" src="https://manager.travelcash.me/dist/img/home/logo-inteiro.png"/>
+            </div>
+            <nav class="nav">
+                <h4>Documentations</h4>
+                <a href="index_cashback.html">API Cashback </a>
+                <a href="index_units.html">API Emission by Units </a>
+                <a href="sync_standards.html">Data Syncronization Standard </a>
+            </nav>
+        </aside>
+        <main>
+            <h1>TravelCash Tech Hub</h1>
+            <p>Select the technical documentation to integrate with our services.</p>
+
+            <div class="card-grid">
+                <a href="index_cashback.html" class="card">
+                    <h3>API Cashback <span class="pill">v4.2.x</span></h3>
+                    <p>This API enables integrations with the TravelCash cashback ecosystem, providing endpoints for balance inquiries, debit registration, and asynchronous communication with the backend.</p>
+                </a>
+
+                <a href="index_units.html" class="card">
+                    <h3>API Emissions by Units<span class="pill">v4.2.x</span></h3>
+                    <p>Integration for receiving sales data directly from the client's units.</p>
+                </a>
+
+                <a href="sync_standards.html" class="card">
+                    <h3>Data Syncronization Standard<span class="pill">v1.2</span></h3>
+                    <p>Data Standard Models for hotel chains to provide checkout endpoints for automatic cashback processing.</p>
+                </a>
+
+            </div>
+        </main>
+    </div>
+</body>
+</html>
