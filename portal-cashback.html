@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta content="width=device-width, initial-scale=1" name="viewport">
-<title>TravelBACK Cashback API v4.2</title>
-<meta content="Documentação completa da TravelBACK Cashback API v4.2" name="description">
+<title>TravelBACK Cashback API v5.0</title>
+<meta content="Documentação completa da TravelBACK Cashback API v5.0" name="description">
 <style>
     :root {
       --bg: #0b1020;
@@ -120,7 +120,8 @@ pre,code{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Consolas,monos
 <a class="tb-home-link" href="index.html">← Tech Hub</a><nav class="nav">
 <h4>Endpoints</h4>
 <a href="#intro">Introduction &amp; Authentication</a>
-<a href="#public-search">GET /api/Public/search</a>
+<a href="#resolve-navigation-code">Resolve Navigation Code (recommended)</a>
+<a href="#create-navigation-code">Create Navigation Code (app)</a>
 <a href="#client-balance">GET /api/client/{id}/balance</a>
 <a href="#cliente-debito">POST /api/cliente/{id}/cashback/Debit</a>
 <a href="#cliente-debito-confirm">POST /api/cliente/{id}/cashback/DebitConfirm</a>
@@ -131,67 +132,180 @@ pre,code{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Consolas,monos
 <a href="#queue">POST /api/Public/queue</a>
 <h4>Models</h4>
 <a href="#models">Request &amp; Response Models</a>
+<a href="#public-search">Legacy: Search</a>
 </nav>
 </aside>
 <main id="main-content">
 <section id="intro">
-<h1>TravelBACK Cashback API <span class="pill">v4.2</span></h1>
+<h1>TravelBACK Cashback API <span class="pill">v5.0</span></h1>
 <p>Welcome to the public documentation for the <strong>TravelBACK Cashback API</strong>. This API enables integrations with the TravelBACK cashback ecosystem, providing endpoints for balance inquiries, debit registration, and asynchronous communication with the backend.
 </p>
 <h3>Authentication</h3>
-<p>All endpoints require authentication via the <code>x-client-key</code> header.</p>
-<pre><code>x-client-key: &lt;YOUR_CLIENT_KEY&gt;</code></pre>
+<p><strong>Recommended v5.0 flow:</strong> the authenticated app calls <a href="#create-navigation-code">Create Navigation Code</a>. The partner receives the code and calls <a href="#resolve-navigation-code">Resolve Navigation Code</a> to obtain the <code>accountId</code> and the returned user data. Use that identifier in subsequent operations that require an account ID, such as checking the balance. There is no need to call Search or Get Account to identify the user in this flow.</p><p>Partner operations in this guide use the credential issued to the integration. The app uses <code>Authorization: Bearer &lt;USER_TOKEN&gt;</code> to create the code; the user token is not part of the partner integration.</p>
 </section>
 
-<section id="public-search">
-<h2><span class="method GET">GET</span> /api/Public/search</h2>
-<p>Search for accounts in the cashback database. If query is empty, returns the last 30 accessed accounts.</p>
-<div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table / Tabela da documentação"><table>
-<thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-<tbody>
-<tr><td>query</td><td>String</td><td>No</td><td>Search query (email, phone, account ID, or name). If empty, returns last 30 accessed accounts.</td></tr>
-</tbody>
-</table>
-</div><h3>Request example</h3>
-<pre><code>curl -X GET "https://travelcashcustomurl.azurewebsites.net/api/Public/search?query=ana@exemplo.com" \
-  -H "x-client-key: &lt;YOUR_CLIENT_KEY&gt;"</code></pre>
-<h3>200 Response (example)</h3>
-<pre><code>[
-  {
+<section id="resolve-navigation-code">
+<h2><span class="method POST">POST</span> /api/MarketplaceAuth/ResolveNavigationCode</h2>
+<p><strong>Partner entry point.</strong> Send the received code in <code>navigationCode</code>. The resolution response contains the <code>accountId</code> and user data.</p>
+<p>Use the partner credential provided for your environment. The example uses <code>x-client-key</code>, the partner header used in this guide; the supplied OpenAPI defines security schemes globally, without operation-level detail.</p>
+<h3>Request example</h3>
+<pre><code>curl -X POST '&lt;BASE_URL&gt;/api/MarketplaceAuth/ResolveNavigationCode' \
+  -H 'Content-Type: application/json' \
+  -H 'x-client-key: &lt;CLIENT_KEY&gt;' \
+  --data '{"navigationCode": "MK-XXXX-XXXX-XXXX"}'</code></pre>
+<h3>Success response: observed structure</h3>
+<p>The <code>accountId</code> is top-level. Profile, balances, preferences, statements and labels sit under <code>account</code>; for example, the name is at <code>account.accountDetails.name</code>. The structure below follows the observed response. Do not assume that unobserved fields are guaranteed.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table"><table><thead><tr><th>Field</th><th>Observed type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>navigationCode</code></td><td>string</td><td>Resolved code.</td></tr>
+<tr><td><code>expiresAt</code></td><td>date-time</td><td>Code expiration.</td></tr>
+<tr><td><code>accountId</code></td><td>UUID</td><td>Account identifier for subsequent operations.</td></tr>
+<tr><td><code>account</code></td><td>object</td><td>Account data container.</td></tr>
+<tr><td><code>account.account</code></td><td>object</td><td>Account record.</td></tr>
+<tr><td><code>account.accountDetails</code></td><td>object</td><td>Profile and contact data.</td></tr>
+<tr><td><code>account.balance</code></td><td>object</td><td>Balances and formatted amounts.</td></tr>
+<tr><td><code>account.setups</code></td><td>object</td><td>Account preferences; includes <code>currency</code> in this example.</td></tr>
+<tr><td><code>account.statements</code></td><td>array</td><td>Statement transactions.</td></tr>
+<tr><td><code>account.labels</code></td><td>array</td><td>Account labels.</td></tr>
+<tr><td><code>result / success</code></td><td>boolean</td><td>Flags observed in the response body.</td></tr>
+<tr><td><code>status</code></td><td>integer</td><td>Status in the body; the example returns 200.</td></tr>
+<tr><td><code>message / messageIng / messageEsp / errorMessage</code></td><td>string</td><td>Message fields in the response body.</td></tr></tbody></table></div>
+<details open><summary>Synthetic example (one item per array)</summary>
+<pre><code>{
+  "navigationCode": "MK-XXXX-XXXX-XXXX",
+  "expiresAt": "2030-01-01T12:05:00Z",
+  "accountId": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+  "account": {
     "account": {
-      "id": "00000000-0000-0000-0000-000000000000",
+      "id": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
       "legalId": "00000000000",
       "status": 1,
       "type": "",
-      "creationTime": "2025-06-10T12:47:13.7911379+00:00",
-      "updateTime": "2025-10-06T17:27:27.03731+00:00",
-      "countryId": "00000000-0000-0000-0000-000000000000",
-      "lastAccessTime": "2025-10-06T17:16:58.2312734+00:00",
-      "lastActivity": "2025-10-06T17:16:58.2362718+00:00",
+      "creationTime": "2030-01-01T12:00:00Z",
+      "updateTime": "2030-01-01T12:00:00Z",
+      "countryId": "5d895b1f-7750-543b-a2c3-422b5299e85d",
+      "lastAccessTime": "2030-01-01T12:00:00Z",
+      "lastActivity": "2030-01-01T12:00:00Z",
       "expireDays": 365
     },
     "accountDetails": {
-      "id": "00000000-0000-0000-0000-000000000000",
-      "name": "ANA SANTOS",
-      "email": "ana@exemplo.com",
-      "phoneNumber": "",
-      "accountId": "00000000-0000-0000-0000-000000000000",
-      "creationTime": "0001-01-01T00:00:00+00:00",
-      "updateTime": "0001-01-01T00:00:00+00:00",
-      "validEmail": false,
+      "id": "ce40c70f-fd69-5393-a2ab-ed3becec3cef",
+      "name": "Example User",
+      "email": "user@example.com",
+      "phoneNumber": "+12025550123",
+      "accountId": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+      "creationTime": "2030-01-01T12:00:00Z",
+      "updateTime": "2030-01-01T12:00:00Z",
+      "validEmail": true,
       "validPhoneNumber": false
     },
     "balance": {
-      "id": "00000000-0000-0000-0000-000000000000",
-      "available": 80.71,
-      "accountId": "00000000-0000-0000-0000-000000000000",
-      "creationTime": "0001-01-01T00:00:00+00:00",
-      "updateTime": "2025-09-09T16:19:51.9300407+00:00",
-      "accumulation": 80.71,
-      "spentPoints": 0
-    }
-  }
-]</code></pre>
+      "id": "ce40c70f-fd69-5393-a2ab-ed3becec3cef",
+      "available": 25.5,
+      "accountId": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+      "creationTime": "2030-01-01T12:00:00Z",
+      "updateTime": "2030-01-01T12:00:00Z",
+      "accumulation": 25.5,
+      "spentPoints": 0.0,
+      "formatedAccumulation": "$25.50",
+      "formatedSpentPoints": "$25.50",
+      "formatedAvailable": "$25.50",
+      "conversionRate": "1.00",
+      "formatedAccumulationBRL": "R$ 127,50",
+      "formatedSpentPointsBRL": "R$ 127,50",
+      "formatedAvailableBRL": "R$ 127,50",
+      "conversionRateBRL": "5.00"
+    },
+    "setups": {
+      "id": "ce40c70f-fd69-5393-a2ab-ed3becec3cef",
+      "accountId": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+      "defaultCurrencyId": "a6c8d7ed-3df1-5e4f-876f-cb61160ac70e",
+      "defaultCountryId": "a9559187-73c0-5c43-9626-3ee834b2e50e",
+      "lang": "en-US",
+      "notificationByEmail": false,
+      "notificationByPhone": false,
+      "notificationByPush": false,
+      "notificationByWhatsapp": false,
+      "defaultChannel": "email",
+      "currency": {
+        "id": "ce40c70f-fd69-5393-a2ab-ed3becec3cef",
+        "name": "US Dollar",
+        "code": "USD",
+        "symbol": "$",
+        "creationTime": "2030-01-01T12:00:00Z",
+        "updateTime": "2030-01-01T12:00:00Z",
+        "currentExchangeRate": 1,
+        "exchangeRateUpdateTime": "2030-01-01T12:00:00Z"
+      }
+    },
+    "statements": [
+      {
+        "id": "ce40c70f-fd69-5393-a2ab-ed3becec3cef",
+        "accountId": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+        "originCurrencyId": "cb405e93-c021-53a6-9d73-38d642909f6d",
+        "originCurrencySymbol": "$",
+        "title": "Example transaction",
+        "type": 1,
+        "value": 25.5,
+        "creationTime": "2030-01-01T12:00:00Z",
+        "exchangeRate": 1.0,
+        "originValue": 25,
+        "status": 0
+      }
+    ],
+    "labels": [
+      {
+        "id": "ce40c70f-fd69-5393-a2ab-ed3becec3cef",
+        "accountId": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+        "labelId": "588e20e2-c202-544c-9284-9839b3557c10",
+        "labelName": "Example label",
+        "labelDescription": "Example label description",
+        "creationTime": "2030-01-01T12:00:00Z",
+        "value": "Example",
+        "labelCreationTime": "2030-01-01T12:00:00Z"
+      }
+    ]
+  },
+  "result": true,
+  "message": "Exemplo de resolução.",
+  "messageIng": "Example resolution.",
+  "messageEsp": "Ejemplo de resolución.",
+  "status": 200,
+  "success": true,
+  "errorMessage": ""
+}</code></pre>
+</details>
+<p>Check the result and a valid <code>accountId</code> before using the account. Do not fall back to Search if resolution fails.</p>
+</section>
+
+<section id="create-navigation-code">
+<h2><span class="method POST">POST</span> /api/MarketplaceAuth/CreateNavigationCode</h2>
+<p><strong>For the TravelBACK app, with the user authenticated.</strong> The app creates the code using the user token. The partner receives and resolves the code on its backend without calling this operation or receiving the user token. <code>state</code> is an optional string that accepts <code>null</code>.</p>
+<h3>Request example</h3>
+<pre><code>curl -X POST '&lt;BASE_URL&gt;/api/MarketplaceAuth/CreateNavigationCode' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer &lt;USER_TOKEN&gt;' \
+  --data '{"state": "example"}'</code></pre>
+<h3>HTTP 200 response (partial example)</h3>
+<pre><code>{
+  "result": true,
+  "success": true,
+  "navigationCode": "MK-XXXX-XXXX-XXXX",
+  "launchUrl": "https://partner.example/path",
+  "expiresAt": "2030-01-01T12:05:00Z"
+}</code></pre>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Response fields"><table><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>navigationCode</code></td><td>string / null</td><td>Navigation code returned by the API.</td></tr>
+<tr><td><code>launchUrl</code></td><td>string / null</td><td>Launch URL returned to the app.</td></tr>
+<tr><td><code>expiresAt</code></td><td>string (date-time)</td><td>Navigation code expiration date and time.</td></tr>
+<tr><td><code>result</code></td><td>boolean</td><td>Operation result flag.</td></tr>
+<tr><td><code>message</code></td><td>string / null</td><td>Operation message.</td></tr>
+<tr><td><code>messageIng</code></td><td>string / null</td><td>English message.</td></tr>
+<tr><td><code>messageEsp</code></td><td>string / null</td><td>Spanish message.</td></tr>
+<tr><td><code>status</code></td><td>integer (int32)</td><td>Status in the response body, separate from the HTTP status.</td></tr>
+<tr><td><code>success</code></td><td>boolean</td><td>Success flag in the response model.</td></tr>
+<tr><td><code>errorMessage</code></td><td>string / null</td><td>Error message, when provided.</td></tr>
+<tr><td><code>data</code></td><td>unspecified / null</td><td>Additional data; structure unspecified.</td></tr>
+</tbody></table></div>
 </section>
 
 <section id="client-balance">
@@ -266,51 +380,34 @@ pre,code{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Consolas,monos
 </section>
 
 <section id="cliente-debito">
-<h2><span class="method POST">POST</span> /api/cliente/{id}/cashback/Debit</h2>
-<p>Registers a cashback debit when the customer uses their balance for a purchase.</p>
-<h3>Validations</h3>
-<ul>
-<li>Client must exist in the database.</li>
-<li>Sufficient balance for debit.</li>
-<li>Non-duplicate transaction (30-minute window).</li>
-<li>Amount must be positive (minimum 0.01).</li>
-</ul>
-<h3>Request Body</h3>
-<div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table / Tabela da documentação"><table>
-<thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-<tbody>
-<tr><td>valorDebito</td><td>number</td><td>Yes</td><td>Debit amount (minimum 0.01).</td></tr>
-<tr><td>idTransacaoVenda</td><td>UUID</td><td>Yes</td><td>Unique sale transaction identifier.</td></tr>
-<tr><td>dataOperacao</td><td>date-time</td><td>No</td><td>Operation date (ISO-8601).</td></tr>
-</tbody>
-</table>
-</div><h3>Request example</h3>
-<pre><code>curl -X POST "https://travelcashcustomurl.azurewebsites.net/api/cliente/00000000-0000-0000-0000-000000000000/cashback/Debit" \
-  -H "Content-Type: application/json" \
-  -H "x-client-key: &lt;YOUR_CLIENT_KEY&gt;" \
-  -d '{
-    "valorDebito": 49.90,
-    "idTransacaoVenda": "4f0e2cdb-6a22-4ef2-8b7f-558e6b2e0a22",
-    "dataOperacao": "2025-10-06T11:15:00-03:00"
-  }'</code></pre>
-<h3>200 Response (example)</h3>
-<pre><code>{
-  "accountId": "00000000-0000-0000-0000-000000000000",
-  "debited": 49.90,
-  "newBalance": 305.10,
-  "status": "ok"
-}</code></pre>
-<h3>Error Responses</h3>
-<div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table / Tabela da documentação"><table>
-<thead><tr><th>Status</th><th>Description</th></tr></thead>
-<tbody>
-<tr><td>400</td><td>Invalid request (missing fields or invalid amount).</td></tr>
-<tr><td>404</td><td>Client not found.</td></tr>
-<tr><td>409</td><td>Insufficient balance or duplicate transaction.</td></tr>
-<tr><td>500</td><td>Internal server error.</td></tr>
-</tbody>
-</table>
-</div></section>
+<h2><span class="method POST">POST</span> /api/cliente/{id}/cashback/Debit</h2><p>Requests a cashback debit. Supply the account UUID in <code>{id}</code>.</p><div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table"><table><thead><tr><th>Field</th><th>Type</th><th>Required in OpenAPI</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>valorDebito</code></td><td>number</td><td>Yes</td><td>Debit amount; at least 0.01.</td></tr>
+<tr><td><code>idTransacaoVenda</code></td><td>uuid</td><td>Yes</td><td>Sale transaction identifier.</td></tr>
+<tr><td><code>referenceCode</code></td><td>string</td><td>Yes</td><td>Operation reference; non-empty string.</td></tr>
+<tr><td><code>dataOperacao</code></td><td>date-time</td><td>Yes</td><td>Operation timestamp in ISO 8601.</td></tr>
+<tr><td><code>titleComplement</code></td><td>string / null</td><td>No</td><td>Optional title complement.</td></tr>
+<tr><td><code>metadata</code></td><td>object / null</td><td>No</td><td>Optional object with additional data.</td></tr>
+<tr><td><code>productModel</code></td><td>string / null</td><td>No</td><td>Product model, when supplied.</td></tr></tbody></table></div><h3>Request example</h3><pre><code>curl -X POST '&lt;BASE_URL&gt;/api/cliente/b0e6ec51-4718-5e0b-98cd-421ed9de6a7e/cashback/Debit' \
+  -H 'x-client-key: &lt;CLIENT_KEY&gt;' \
+  -H 'Content-Type: application/json' \
+  --data '{
+  "valorDebito": 25.5,
+  "idTransacaoVenda": "ce77e0fd-8ff7-4c56-a6e2-973d9e5bab8c",
+  "referenceCode": "ORDER-EXAMPLE-001",
+  "dataOperacao": "2030-01-01T12:00:00Z",
+  "titleComplement": "Example order",
+  "metadata": {
+    "orderId": "ORDER-EXAMPLE-001"
+  },
+  "productModel": "Example"
+}'</code></pre><h3>HTTP responses in OpenAPI</h3><div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table"><table><thead><tr><th>HTTP</th><th>Response body</th></tr></thead><tbody>
+<tr><td>200</td><td>No structure specified</td></tr>
+<tr><td>400</td><td><code>ProblemDetails</code></td></tr>
+<tr><td>404</td><td><code>ProblemDetails</code></td></tr>
+<tr><td>409</td><td><code>ProblemDetails</code></td></tr>
+<tr><td>422</td><td><code>ProblemDetails</code></td></tr>
+<tr><td>500</td><td>No structure specified</td></tr></tbody></table></div><p>HTTP 200 indicates success; OpenAPI does not describe the response body.</p>
+</section>
 
 <section id="cliente-debito-confirm">
 <h2><span class="method POST">POST</span> /api/cliente/{id}/cashback/DebitConfirm</h2>
@@ -632,15 +729,15 @@ pre,code{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Consolas,monos
 <section id="models">
 <h2>Request &amp; Response Models</h2>
 <h3>CashbackDebitRequest</h3>
-<div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table / Tabela da documentação"><table>
-<thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
-<tbody>
-<tr><td>valorDebito</td><td>number</td><td>Yes</td><td>Debit amount (min: 0.01)</td></tr>
-<tr><td>idTransacaoVenda</td><td>UUID</td><td>Yes</td><td>Unique sale transaction ID</td></tr>
-<tr><td>dataOperacao</td><td>date-time</td><td>No</td><td>Operation timestamp</td></tr>
-</tbody>
-</table>
-</div><h3>DebitConfirmRequest</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table"><table><thead><tr><th>Field</th><th>Type</th><th>Required in OpenAPI</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>valorDebito</code></td><td>number</td><td>Yes</td><td>Debit amount; at least 0.01.</td></tr>
+<tr><td><code>idTransacaoVenda</code></td><td>uuid</td><td>Yes</td><td>Sale transaction identifier.</td></tr>
+<tr><td><code>referenceCode</code></td><td>string</td><td>Yes</td><td>Operation reference; non-empty string.</td></tr>
+<tr><td><code>dataOperacao</code></td><td>date-time</td><td>Yes</td><td>Operation timestamp in ISO 8601.</td></tr>
+<tr><td><code>titleComplement</code></td><td>string / null</td><td>No</td><td>Optional title complement.</td></tr>
+<tr><td><code>metadata</code></td><td>object / null</td><td>No</td><td>Optional object with additional data.</td></tr>
+<tr><td><code>productModel</code></td><td>string / null</td><td>No</td><td>Product model, when supplied.</td></tr></tbody></table></div>
+<h3>DebitConfirmRequest</h3>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table / Tabela da documentação"><table>
 <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
 <tbody>
@@ -681,57 +778,22 @@ pre,code{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Consolas,monos
 </table>
 </div></section>
 
-<div class="footer">
-© 2025 TravelBACK Cashback API – v4.2. All rights reserved.
-</div>
-</main>
-</div>
-</section>
-
-<section data-lang="pt" id="lang-pt" hidden="hidden" lang="pt-BR">
-<div class="wrapper">
-<aside>
-<div class="brand">
-<img alt="TravelBACK" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjE1NC45OTIzNjY0MTIyMTM3MyAzNTkuMjY0IDU1NS42NjQxMjIxMzc0MDQ3IDEwNy4xMiIgc3R5bGU9Im1heC1oZWlnaHQ6IDUwMHB4IiB3aWR0aD0iNTU1LjY2NDEyMjEzNzQwNDciIGhlaWdodD0iMTA3LjEyIj4KPHBhdGggZmlsbD0iIzBGMDIyRCIgZD0iTTE4MyAzODcuMDYyVjM4MC4wNDNIMjMyLjAwOVYzODcuMDYySDIxMS40NjFWNDQ1LjM4OEgyMDMuNTQ4VjM4Ny4wNjJIMTgzWiIvPgo8cGF0aCBmaWxsPSIjMEYwMjJEIiBkPSJNMjM4LjExMSA0NDUuMzg4VjM5Ni4zNzlIMjQ1LjM4NlY0MDMuNzgySDI0NS44OTZDMjQ2Ljc5IDQwMS4zNTcgMjQ4LjQwNyAzOTkuMzg5IDI1MC43NDYgMzk3Ljg3OUMyNTMuMDg2IDM5Ni4zNjkgMjU1LjcyNCAzOTUuNjE0IDI1OC42NTkgMzk1LjYxNEMyNTkuMjEyIDM5NS42MTQgMjU5LjkwNCAzOTUuNjI0IDI2MC43MzMgMzk1LjY0NUMyNjEuNTYzIDM5NS42NjcgMjYyLjE5IDM5NS42OTkgMjYyLjYxNiAzOTUuNzQxVjQwMy4zOTlDMjYyLjM2IDQwMy4zMzUgMjYxLjc3NiA0MDMuMjM5IDI2MC44NjEgNDAzLjExMkMyNTkuOTY3IDQwMi45NjMgMjU5LjAyMSA0MDIuODg4IDI1OC4wMjEgNDAyLjg4OEMyNTUuNjM5IDQwMi44ODggMjUzLjUxMiA0MDMuMzg4IDI1MS42NCA0MDQuMzg4QzI0OS43ODkgNDA1LjM2NiAyNDguMzIxIDQwNi43MjggMjQ3LjIzNyA0MDguNDcyQzI0Ni4xNzMgNDEwLjE5NSAyNDUuNjQxIDQxMi4xNjMgMjQ1LjY0MSA0MTQuMzc1VjQ0NS4zODhIMjM4LjExMVoiLz4KPHBhdGggZmlsbD0iIzBGMDIyRCIgZD0iTTI4NS45NjQgNDQ2LjUzN0MyODIuODU4IDQ0Ni41MzcgMjgwLjA0IDQ0NS45NTIgMjc3LjUwOCA0NDQuNzgyQzI3NC45NzcgNDQzLjU5MSAyNzIuOTY3IDQ0MS44NzkgMjcxLjQ3OCA0MzkuNjQ1QzI2OS45ODkgNDM3LjM5IDI2OS4yNDQgNDM0LjY2OCAyNjkuMjQ0IDQzMS40NzdDMjY5LjI0NCA0MjguNjY5IDI2OS43OTcgNDI2LjM5MyAyNzAuOTA0IDQyNC42NDlDMjcyLjAxIDQyMi44ODMgMjczLjQ4OCA0MjEuNTAxIDI3NS4zMzkgNDIwLjUwMUMyNzcuMTg5IDQxOS41MDEgMjc5LjIzMSA0MTguNzU3IDI4MS40NjUgNDE4LjI2N0MyODMuNzE5IDQxNy43NTcgMjg1Ljk4NSA0MTcuMzUzIDI4OC4yNjEgNDE3LjA1NUMyOTEuMjM5IDQxNi42NzIgMjkzLjY1MyA0MTYuMzg1IDI5NS41MDQgNDE2LjE5M0MyOTcuMzc2IDQxNS45ODEgMjk4LjczNyA0MTUuNjMgMjk5LjU4OCA0MTUuMTQxQzMwMC40NiA0MTQuNjUxIDMwMC44OTYgNDEzLjggMzAwLjg5NiA0MTIuNTg4VjQxMi4zMzNDMzAwLjg5NiA0MDkuMTg1IDMwMC4wMzUgNDA2LjczOCAyOTguMzEyIDQwNC45OTRDMjk2LjYxIDQwMy4yNSAyOTQuMDI1IDQwMi4zNzggMjkwLjU1OCA0MDIuMzc4QzI4Ni45NjMgNDAyLjM3OCAyODQuMTQ1IDQwMy4xNjUgMjgyLjEwMyA0MDQuNzM5QzI4MC4wNjEgNDA2LjMxMyAyNzguNjI1IDQwNy45OTMgMjc3Ljc5NSA0MDkuNzhMMjcwLjY0OCA0MDcuMjI4QzI3MS45MjUgNDA0LjI1IDI3My42MjYgNDAxLjkzMSAyNzUuNzUzIDQwMC4yNzJDMjc3LjkwMiAzOTguNTkyIDI4MC4yNDIgMzk3LjQyMiAyODIuNzczIDM5Ni43NjJDMjg1LjMyNSAzOTYuMDgyIDI4Ny44MzUgMzk1Ljc0MSAyOTAuMzAzIDM5NS43NDFDMjkxLjg3NyAzOTUuNzQxIDI5My42ODUgMzk1LjkzMyAyOTUuNzI3IDM5Ni4zMTVDMjk3Ljc5IDM5Ni42NzcgMjk5Ljc3OSAzOTcuNDMyIDMwMS42OTQgMzk4LjU4MUMzMDMuNjI5IDM5OS43MyAzMDUuMjM1IDQwMS40NjMgMzA2LjUxMiA0MDMuNzgyQzMwNy43ODggNDA2LjEgMzA4LjQyNiA0MDkuMjA2IDMwOC40MjYgNDEzLjA5OVY0NDUuMzg4SDMwMC44OTZWNDM4Ljc1MkgzMDAuNTEzQzMwMC4wMDMgNDM5LjgxNSAyOTkuMTUyIDQ0MC45NTMgMjk3Ljk2MSA0NDIuMTY2QzI5Ni43NjkgNDQzLjM3OCAyOTUuMTg1IDQ0NC40MSAyOTMuMjA2IDQ0NS4yNjFDMjkxLjIyOCA0NDYuMTEyIDI4OC44MTQgNDQ2LjUzNyAyODUuOTY0IDQ0Ni41MzdaTTI4Ny4xMTIgNDM5Ljc3M0MyOTAuMDkgNDM5Ljc3MyAyOTIuNiA0MzkuMTg4IDI5NC42NDIgNDM4LjAxOEMyOTYuNzA2IDQzNi44NDggMjk4LjI1OCA0MzUuMzM4IDI5OS4zMDEgNDMzLjQ4N0MzMDAuMzY0IDQzMS42MzYgMzAwLjg5NiA0MjkuNjkgMzAwLjg5NiA0MjcuNjQ4VjQyMC43NTZDMzAwLjU3NyA0MjEuMTM5IDI5OS44NzUgNDIxLjQ5IDI5OC43OSA0MjEuODA5QzI5Ny43MjcgNDIyLjEwNyAyOTYuNDkzIDQyMi4zNzMgMjk1LjA4OSA0MjIuNjA3QzI5My43MDYgNDIyLjgxOSAyOTIuMzU2IDQyMy4wMTEgMjkxLjAzNyA0MjMuMTgxQzI4OS43MzkgNDIzLjMzIDI4OC42ODYgNDIzLjQ1OCAyODcuODc4IDQyMy41NjRDMjg1LjkyMSA0MjMuODE5IDI4NC4wOTIgNDI0LjIzNCAyODIuMzkgNDI0LjgwOEMyODAuNzEgNDI1LjM2MSAyNzkuMzQ4IDQyNi4yMDIgMjc4LjMwNiA0MjcuMzI5QzI3Ny4yODUgNDI4LjQzNSAyNzYuNzc0IDQyOS45NDUgMjc2Ljc3NCA0MzEuODZDMjc2Ljc3NCA0MzQuNDc2IDI3Ny43NDIgNDM2LjQ1NCAyNzkuNjc4IDQzNy43OTRDMjgxLjYzNSA0MzkuMTEzIDI4NC4xMTMgNDM5Ljc3MyAyODcuMTEyIDQzOS43NzNaIi8+CjxwYXRoIGZpbGw9IiMwRjAyMkQiIGQ9Ik0zNjAuNDkgMzk2LjM3OUwzNDIuMzY3IDQ0NS4zODhIMzM0LjcwOUwzMTYuNTg2IDM5Ni4zNzlIMzI0Ljc1NEwzMzguMjgzIDQzNS40MzNIMzM4Ljc5M0wzNTIuMzIyIDM5Ni4zNzlIMzYwLjQ5WiIvPgo8cGF0aCBmaWxsPSIjMEYwMjJEIiBkPSJNMzg5LjIyMiA0NDYuNDA5QzM4NC41IDQ0Ni40MDkgMzgwLjQyNyA0NDUuMzY3IDM3Ny4wMDIgNDQzLjI4MkMzNzMuNTk5IDQ0MS4xNzcgMzcwLjk3MiA0MzguMjQxIDM2OS4xMjEgNDM0LjQ3NkMzNjcuMjkyIDQzMC42OSAzNjYuMzc3IDQyNi4yODcgMzY2LjM3NyA0MjEuMjY3QzM2Ni4zNzcgNDE2LjI0NyAzNjcuMjkyIDQxMS44MjIgMzY5LjEyMSA0MDcuOTkzQzM3MC45NzIgNDA0LjE0MyAzNzMuNTQ1IDQwMS4xNDQgMzc2Ljg0MiAzOTguOTk2QzM4MC4xNjEgMzk2LjgyNiAzODQuMDMyIDM5NS43NDEgMzg4LjQ1NyAzOTUuNzQxQzM5MS4wMDkgMzk1Ljc0MSAzOTMuNTMgMzk2LjE2NyAzOTYuMDE5IDM5Ny4wMTdDMzk4LjUwNyAzOTcuODY4IDQwMC43NzMgMzk5LjI1MSA0MDIuODE1IDQwMS4xNjVDNDA0Ljg1NyA0MDMuMDU4IDQwNi40ODQgNDA1LjU2OCA0MDcuNjk2IDQwOC42OTVDNDA4LjkwOSA0MTEuODIyIDQwOS41MTUgNDE1LjY3MiA0MDkuNTE1IDQyMC4yNDZWNDIzLjQzNkgzNzEuNzM3VjQxNi45MjdINDAxLjg1N0M0MDEuODU3IDQxNC4xNjIgNDAxLjMwNCA0MTEuNjk1IDQwMC4xOTggNDA5LjUyNUMzOTkuMTEzIDQwNy4zNTUgMzk3LjU2MSA0MDUuNjQzIDM5NS41NCA0MDQuMzg4QzM5My41NCA0MDMuMTMzIDM5MS4xNzkgNDAyLjUwNSAzODguNDU3IDQwMi41MDVDMzg1LjQ1NyA0MDIuNTA1IDM4Mi44NjIgNDAzLjI1IDM4MC42NzEgNDA0LjczOUMzNzguNTAyIDQwNi4yMDcgMzc2LjgzMiA0MDguMTIxIDM3NS42NjIgNDEwLjQ4MkMzNzQuNDkyIDQxMi44NDMgMzczLjkwNyA0MTUuMzc1IDM3My45MDcgNDE4LjA3NlY0MjIuNDE1QzM3My45MDcgNDI2LjExNyAzNzQuNTQ1IDQyOS4yNTQgMzc1LjgyMSA0MzEuODI4QzM3Ny4xMTkgNDM0LjM4IDM3OC45MTYgNDM2LjMyNyAzODEuMjE0IDQzNy42NjdDMzgzLjUxMSA0MzguOTg2IDM4Ni4xODEgNDM5LjY0NSAzODkuMjIyIDQzOS42NDVDMzkxLjIwMSA0MzkuNjQ1IDM5Mi45ODcgNDM5LjM2OSAzOTQuNTgzIDQzOC44MTVDMzk2LjE5OSA0MzguMjQxIDM5Ny41OTMgNDM3LjM5IDM5OC43NjIgNDM2LjI2M0MzOTkuOTMyIDQzNS4xMTQgNDAwLjgzNiA0MzMuNjg5IDQwMS40NzUgNDMxLjk4N0w0MDguNzQ5IDQzNC4wMjlDNDA3Ljk4NCA0MzYuNDk3IDQwNi42OTcgNDM4LjY2NyA0MDQuODg5IDQ0MC41MzhDNDAzLjA4MSA0NDIuMzg5IDQwMC44NDcgNDQzLjgzNiAzOTguMTg4IDQ0NC44NzhDMzk1LjUyOSA0NDUuODk5IDM5Mi41NDEgNDQ2LjQwOSAzODkuMjIyIDQ0Ni40MDlaIi8+CjxwYXRoIGZpbGw9IiMwRjAyMkQiIGQ9Ik00MjguNSAzODAuMDQzVjQ0NS4zODhINDIwLjk3VjM4MC4wNDNINDI4LjVaIi8+CjxwYXRoIGZpbGw9IiMwRjAyMkQiIGQ9Ik00NDAuNzE5IDQ0NC4yMzlWMzc4Ljg5M0g0NjUuNzM0QzQ3MC40NTYgMzc4Ljg5MyA0NzQuMzggMzc5LjYzOCA0NzcuNTA3IDM4MS4xMjdDNDgwLjY1NSAzODIuNTk1IDQ4My4wMDYgMzg0LjYwNSA0ODQuNTU5IDM4Ny4xNTdDNDg2LjEzMyAzODkuNzEgNDg2LjkyIDM5Mi42MDMgNDg2LjkyIDM5NS44MzZDNDg2LjkyIDM5OC40OTUgNDg2LjQwOSA0MDAuNzcxIDQ4NS4zODggNDAyLjY2NEM0ODQuMzY3IDQwNC41MzYgNDgyLjk5NSA0MDYuMDU3IDQ4MS4yNzIgNDA3LjIyN0M0NzkuNTQ5IDQwOC4zOTcgNDc3LjYyNCA0MDkuMjM3IDQ3NS40OTcgNDA5Ljc0N1Y0MTAuMzg2QzQ3Ny44MTYgNDEwLjUxMyA0ODAuMDM4IDQxMS4yMjYgNDgyLjE2NiA0MTIuNTIzQzQ4NC4zMTQgNDEzLjggNDg2LjA2OSA0MTUuNjA4IDQ4Ny40MyA0MTcuOTQ3QzQ4OC43OTIgNDIwLjI4NyA0ODkuNDcyIDQyMy4xMTYgNDg5LjQ3MiA0MjYuNDM1QzQ4OS40NzIgNDI5LjgxNyA0ODguNjUzIDQzMi44NTkgNDg3LjAxNSA0MzUuNTZDNDg1LjM3OCA0MzguMjQgNDgyLjkxIDQ0MC4zNTcgNDc5LjYxMyA0NDEuOTFDNDc2LjMxNiA0NDMuNDYyIDQ3Mi4xNjggNDQ0LjIzOSA0NjcuMTY5IDQ0NC4yMzlINDQwLjcxOVpNNDUyLjU1NiA0MzQuMzQ4SDQ2NS4yODdDNDY5LjU4NCA0MzQuMzQ4IDQ3Mi42NzkgNDMzLjUyOSA0NzQuNTcyIDQzMS44OTFDNDc2LjQ4NiA0MzAuMjMyIDQ3Ny40NDMgNDI4LjEwNCA0NzcuNDQzIDQyNS41MDlDNDc3LjQ0MyA0MjMuNTc0IDQ3Ni45NjUgNDIxLjgyOSA0NzYuMDA4IDQyMC4yNzdDNDc1LjA1IDQxOC43MDMgNDczLjY4OSA0MTcuNDY5IDQ3MS45MjMgNDE2LjU3NUM0NzAuMTU4IDQxNS42NjEgNDY4LjA1MiA0MTUuMjAzIDQ2NS42MDYgNDE1LjIwM0g0NTIuNTU2VjQzNC4zNDhaTTQ1Mi41NTYgNDA2LjY4NEg0NjQuMjY2QzQ2Ni4zMDggNDA2LjY4NCA0NjguMTQ4IDQwNi4zMTIgNDY5Ljc4NiA0MDUuNTY4QzQ3MS40MjQgNDA0LjgwMiA0NzIuNzEgNDAzLjcyOCA0NzMuNjQ2IDQwMi4zNDVDNDc0LjYwNCA0MDAuOTQxIDQ3NS4wODIgMzk5LjI4MiA0NzUuMDgyIDM5Ny4zNjdDNDc1LjA4MiAzOTQuODM2IDQ3NC4xODkgMzkyLjc1MiA0NzIuNDAyIDM5MS4xMTRDNDcwLjYzNyAzODkuNDc2IDQ2OC4wMSAzODguNjU3IDQ2NC41MjEgMzg4LjY1N0g0NTIuNTU2VjQwNi42ODRaIi8+CjxwYXRoIGZpbGw9IiMwRjAyMkQiIGQ9Ik01MDguMTYyIDQ0NC4yMzlINDk1LjUyN0w1MTguNTMxIDM3OC44OTNINTMzLjE0NUw1NTYuMTgyIDQ0NC4yMzlINTQzLjU0Nkw1MjYuMDkzIDM5Mi4yOTRINTI1LjU4M0w1MDguMTYyIDQ0NC4yMzlaIi8+CjxwYXRoIGZpbGw9IiMwRjAyMkQiIGQ9Ik02MTcuNjUgNDAwLjk0MUg2MDUuNzE3QzYwNS4zNzcgMzk4Ljk4NCA2MDQuNzQ5IDM5Ny4yNTEgNjAzLjgzNSAzOTUuNzRDNjAyLjkyIDM5NC4yMDkgNjAxLjc4MiAzOTIuOTExIDYwMC40MjEgMzkxLjg0OEM1OTkuMDU5IDM5MC43ODQgNTk3LjUwNiAzODkuOTg2IDU5NS43NjIgMzg5LjQ1NUM1OTQuMDM5IDM4OC45MDIgNTkyLjE3OCAzODguNjI1IDU5MC4xNzggMzg4LjYyNUM1ODYuNjI2IDM4OC42MjUgNTgzLjQ3OCAzODkuNTE4IDU4MC43MzQgMzkxLjMwNUM1NzcuOTkgMzkzLjA3MSA1NzUuODQyIDM5NS42NjYgNTc0LjI4OSAzOTkuMDlDNTcyLjczNiA0MDIuNDk0IDU3MS45NiA0MDYuNjUyIDU3MS45NiA0MTEuNTY2QzU3MS45NiA0MTYuNTY1IDU3Mi43MzYgNDIwLjc3NyA1NzQuMjg5IDQyNC4yMDFDNTc1Ljg2MyA0MjcuNjA1IDU3OC4wMTEgNDMwLjE3OCA1ODAuNzM0IDQzMS45MjNDNTgzLjQ3OCA0MzMuNjQ2IDU4Ni42MTUgNDM0LjUwNyA1OTAuMTQ3IDQzNC41MDdDNTkyLjEwMyA0MzQuNTA3IDU5My45MzMgNDM0LjI1MiA1OTUuNjM1IDQzMy43NDFDNTk3LjM1NyA0MzMuMjEgNTk4LjkgNDMyLjQzMyA2MDAuMjYxIDQzMS40MTJDNjAxLjY0NCA0MzAuMzkxIDYwMi44MDMgNDI5LjEzNiA2MDMuNzM5IDQyNy42NDdDNjA0LjY5NiA0MjYuMTU4IDYwNS4zNTUgNDI0LjQ1NiA2MDUuNzE3IDQyMi41NDJMNjE3LjY1IDQyMi42MDZDNjE3LjIwNCA0MjUuNzExIDYxNi4yMzYgNDI4LjYyNiA2MTQuNzQ3IDQzMS4zNDhDNjEzLjI3OSA0MzQuMDcxIDYxMS4zNTQgNDM2LjQ3NSA2MDguOTcyIDQzOC41NTlDNjA2LjU4OSA0NDAuNjIzIDYwMy44MDMgNDQyLjIzOSA2MDAuNjEyIDQ0My40MDlDNTk3LjQyMSA0NDQuNTU4IDU5My44OCA0NDUuMTMyIDU4OS45ODcgNDQ1LjEzMkM1ODQuMjQ0IDQ0NS4xMzIgNTc5LjExNyA0NDMuODAzIDU3NC42MDggNDQxLjE0NEM1NzAuMDk4IDQzOC40ODUgNTY2LjU0NiA0MzQuNjQ1IDU2My45NTEgNDI5LjYyNUM1NjEuMzU2IDQyNC42MDUgNTYwLjA1OCA0MTguNTg2IDU2MC4wNTggNDExLjU2NkM1NjAuMDU4IDQwNC41MjUgNTYxLjM2NyAzOTguNTA2IDU2My45ODMgMzkzLjUwN0M1NjYuNTk5IDM4OC40ODcgNTcwLjE2MiAzODQuNjQ3IDU3NC42NzIgMzgxLjk4OEM1NzkuMTgxIDM3OS4zMjkgNTg0LjI4NiAzNzggNTg5Ljk4NyAzNzhDNTkzLjYyNCAzNzggNTk3LjAwNyAzNzguNTExIDYwMC4xMzMgMzc5LjUzMkM2MDMuMjYgMzgwLjU1MyA2MDYuMDQ3IDM4Mi4wNTIgNjA4LjQ5MyAzODQuMDNDNjEwLjkzOSAzODUuOTg3IDYxMi45NDkgMzg4LjM5MSA2MTQuNTIzIDM5MS4yNDFDNjE2LjExOSAzOTQuMDcgNjE3LjE2MSAzOTcuMzA0IDYxNy42NSA0MDAuOTQxWiIvPgo8cGF0aCBmaWxsPSIjMEYwMjJEIiBkPSJNNjI4LjQ5MSA0NDQuMjM5VjM3OC44OTNINjQwLjMyOFY0MDguOTE4SDY0MS4xMjZMNjY2LjYxOSAzNzguODkzSDY4MS4wNzNMNjU1LjgwMyA0MDguMjE2TDY4MS4yOTcgNDQ0LjIzOUg2NjcuMDY2TDY0Ny41NzEgNDE2LjIyNEw2NDAuMzI4IDQyNC43NzZWNDQ0LjIzOUg2MjguNDkxWiIvPgo8cGF0aCBmaWxsPSIjMEYwMjJEIiBkPSJNNTA4LjE2MiA0NDQuMjM4SDQ5NS41MjdMNTE4LjUzMSAzNzguODkzSDUzMy4xNDVMNTU2LjE4MiA0NDQuMjM4SDU0My41NDdMNTI2LjA5MyAzOTIuMjkzSDUyNS41ODNMNTA4LjE2MiA0NDQuMjM4WiIvPgo8cGF0aCBmaWxsPSIjMEYwMjJEIiBkPSJNNTI2LjA4MSA0MjcuODM0TDUzOS40NTEgNDQ0LjIzOEg1MTIuNTMxTDUyNi4wODEgNDI3LjgzNFoiLz4KPHBhdGggZmlsbD0iIzBGMDIyRCIgZD0iTTI1MC4zMDcgNDc4LjA4QzI1MC4wODcgNDc3LjM5IDI0OS43OTIgNDc2Ljc3MyAyNDkuNDIgNDc2LjIyN0MyNDkuMDU3IDQ3NS42NzQgMjQ4LjYyMSA0NzUuMjA1IDI0OC4xMTQgNDc0LjgxOEMyNDcuNjA2IDQ3NC40MjQgMjQ3LjAyNyA0NzQuMTI1IDI0Ni4zNzUgNDczLjkyQzI0NS43MzEgNDczLjcxNiAyNDUuMDIzIDQ3My42MTQgMjQ0LjI1IDQ3My42MTRDMjQyLjkzOSA0NzMuNjE0IDI0MS43NTggNDczLjk1MSAyNDAuNzA1IDQ3NC42MjVDMjM5LjY1MiA0NzUuMjk5IDIzOC44MTggNDc2LjI4OCAyMzguMjA1IDQ3Ny41OTFDMjM3LjU5OCA0NzguODg2IDIzNy4yOTUgNDgwLjQ3MyAyMzcuMjk1IDQ4Mi4zNTJDMjM3LjI5NSA0ODQuMjM5IDIzNy42MDIgNDg1LjgzMyAyMzguMjE2IDQ4Ny4xMzZDMjM4LjgzIDQ4OC40MzkgMjM5LjY3IDQ4OS40MjggMjQwLjczOSA0OTAuMTAyQzI0MS44MDcgNDkwLjc3NyAyNDMuMDIzIDQ5MS4xMTQgMjQ0LjM4NiA0OTEuMTE0QzI0NS42NTIgNDkxLjExNCAyNDYuNzU0IDQ5MC44NTYgMjQ3LjY5MyA0OTAuMzQxQzI0OC42NCA0ODkuODI2IDI0OS4zNzEgNDg5LjA5OCAyNDkuODg2IDQ4OC4xNTlDMjUwLjQwOSA0ODcuMjEyIDI1MC42NyA0ODYuMDk4IDI1MC42NyA0ODQuODE4TDI1MS41OCA0ODQuOTg5SDI0NC45MlY0ODIuMDkxSDI1NC4wNjhWNDg0LjczOUMyNTQuMDY4IDQ4Ni42OTMgMjUzLjY1MiA0ODguMzkgMjUyLjgxOCA0ODkuODNDMjUxLjk5MiA0OTEuMjYxIDI1MC44NDggNDkyLjM2NyAyNDkuMzg2IDQ5My4xNDhDMjQ3LjkzMiA0OTMuOTI4IDI0Ni4yNjUgNDk0LjMxOCAyNDQuMzg2IDQ5NC4zMThDMjQyLjI4IDQ5NC4zMTggMjQwLjQzMiA0OTMuODMzIDIzOC44NDEgNDkyLjg2NEMyMzcuMjU4IDQ5MS44OTQgMjM2LjAyMyA0OTAuNTE5IDIzNS4xMzYgNDg4LjczOUMyMzQuMjUgNDg2Ljk1MSAyMzMuODA3IDQ4NC44MyAyMzMuODA3IDQ4Mi4zNzVDMjMzLjgwNyA0ODAuNTE5IDIzNC4wNjQgNDc4Ljg1MiAyMzQuNTggNDc3LjM3NUMyMzUuMDk1IDQ3NS44OTggMjM1LjgxOCA0NzQuNjQ0IDIzNi43NSA0NzMuNjE0QzIzNy42ODkgNDcyLjU3NiAyMzguNzkyIDQ3MS43ODQgMjQwLjA1NyA0NzEuMjM5QzI0MS4zMyA0NzAuNjg2IDI0Mi43MiA0NzAuNDA5IDI0NC4yMjcgNDcwLjQwOUMyNDUuNDg1IDQ3MC40MDkgMjQ2LjY1NSA0NzAuNTk1IDI0Ny43MzkgNDcwLjk2NkMyNDguODMgNDcxLjMzNyAyNDkuNzk5IDQ3MS44NjQgMjUwLjY0OCA0NzIuNTQ1QzI1MS41MDQgNDczLjIyNyAyNTIuMjEyIDQ3NC4wMzggMjUyLjc3MyA0NzQuOTc3QzI1My4zMzMgNDc1LjkwOSAyNTMuNzEyIDQ3Ni45NDMgMjUzLjkwOSA0NzguMDhIMjUwLjMwN1pNMjY1Ljc3NiA0OTQuMzUyQzI2NC4wNTYgNDk0LjM1MiAyNjIuNTc1IDQ5My45ODUgMjYxLjMzMiA0OTMuMjVDMjYwLjA5OCA0OTIuNTA4IDI1OS4xNDMgNDkxLjQ2NiAyNTguNDY5IDQ5MC4xMjVDMjU3LjgwMiA0ODguNzc3IDI1Ny40NjkgNDg3LjE5NyAyNTcuNDY5IDQ4NS4zODZDMjU3LjQ2OSA0ODMuNTk4IDI1Ny44MDIgNDgyLjAyMyAyNTguNDY5IDQ4MC42NTlDMjU5LjE0MyA0NzkuMjk1IDI2MC4wODIgNDc4LjIzMSAyNjEuMjg3IDQ3Ny40NjZDMjYyLjQ5OSA0NzYuNzAxIDI2My45MTYgNDc2LjMxOCAyNjUuNTM3IDQ3Ni4zMThDMjY2LjUyMiA0NzYuMzE4IDI2Ny40NzYgNDc2LjQ4MSAyNjguNDAxIDQ3Ni44MDdDMjY5LjMyNSA0NzcuMTMzIDI3MC4xNTQgNDc3LjY0NCAyNzAuODg5IDQ3OC4zNDFDMjcxLjYyNCA0NzkuMDM4IDI3Mi4yMDQgNDc5Ljk0MyAyNzIuNjI4IDQ4MS4wNTdDMjczLjA1MiA0ODIuMTYzIDI3My4yNjQgNDgzLjUwOCAyNzMuMjY0IDQ4NS4wOTFWNDg2LjI5NUgyNTkuMzg5VjQ4My43NUgyNjkuOTM1QzI2OS45MzUgNDgyLjg1NiAyNjkuNzUzIDQ4Mi4wNjQgMjY5LjM4OSA0ODEuMzc1QzI2OS4wMjYgNDgwLjY3OCAyNjguNTE0IDQ4MC4xMjkgMjY3Ljg1NSA0NzkuNzI3QzI2Ny4yMDQgNDc5LjMyNiAyNjYuNDM4IDQ3OS4xMjUgMjY1LjU2IDQ3OS4xMjVDMjY0LjYwNSA0NzkuMTI1IDI2My43NzIgNDc5LjM2IDI2My4wNiA0NzkuODNDMjYyLjM1NSA0ODAuMjkyIDI2MS44MSA0ODAuODk4IDI2MS40MjMgNDgxLjY0OEMyNjEuMDQ1IDQ4Mi4zOSAyNjAuODU1IDQ4My4xOTcgMjYwLjg1NSA0ODQuMDY4VjQ4Ni4wNTdDMjYwLjg1NSA0ODcuMjIzIDI2MS4wNiA0ODguMjE2IDI2MS40NjkgNDg5LjAzNEMyNjEuODg1IDQ4OS44NTIgMjYyLjQ2NSA0OTAuNDc3IDI2My4yMDcgNDkwLjkwOUMyNjMuOTUgNDkxLjMzMyAyNjQuODE3IDQ5MS41NDUgMjY1LjgxIDQ5MS41NDVDMjY2LjQ1NCA0OTEuNTQ1IDI2Ny4wNDEgNDkxLjQ1NSAyNjcuNTcxIDQ5MS4yNzNDMjY4LjEwMSA0OTEuMDgzIDI2OC41NiA0OTAuODAzIDI2OC45NDYgNDkwLjQzMkMyNjkuMzMyIDQ5MC4wNjEgMjY5LjYyOCA0ODkuNjAyIDI2OS44MzIgNDg5LjA1N0wyNzMuMDQ4IDQ4OS42MzZDMjcyLjc5MSA0OTAuNTgzIDI3Mi4zMjkgNDkxLjQxMyAyNzEuNjYyIDQ5Mi4xMjVDMjcxLjAwMyA0OTIuODMgMjcwLjE3MyA0OTMuMzc5IDI2OS4xNzMgNDkzLjc3M0MyNjguMTgxIDQ5NC4xNTkgMjY3LjA0OCA0OTQuMzUyIDI2NS43NzYgNDk0LjM1MlpNMjg1LjE4MiA0NzYuNTQ1VjQ3OS4yNzNIMjc1LjY0OFY0NzYuNTQ1SDI4NS4xODJaTTI3OC4yMDUgNDcyLjM2NEgyODEuNjAyVjQ4OC44NzVDMjgxLjYwMiA0ODkuNTM0IDI4MS43MDEgNDkwLjAzIDI4MS44OTggNDkwLjM2NEMyODIuMDk1IDQ5MC42ODkgMjgyLjM0OCA0OTAuOTEzIDI4Mi42NTkgNDkxLjAzNEMyODIuOTc3IDQ5MS4xNDggMjgzLjMyMiA0OTEuMjA1IDI4My42OTMgNDkxLjIwNUMyODMuOTY2IDQ5MS4yMDUgMjg0LjIwNSA0OTEuMTg2IDI4NC40MDkgNDkxLjE0OEMyODQuNjE0IDQ5MS4xMSAyODQuNzczIDQ5MS4wOCAyODQuODg2IDQ5MS4wNTdMMjg1LjUgNDkzLjg2NEMyODUuMzAzIDQ5My45MzkgMjg1LjAyMyA0OTQuMDE1IDI4NC42NTkgNDk0LjA5MUMyODQuMjk1IDQ5NC4xNzQgMjgzLjg0MSA0OTQuMjIgMjgzLjI5NSA0OTQuMjI3QzI4Mi40MDIgNDk0LjI0MiAyODEuNTY4IDQ5NC4wODMgMjgwLjc5NSA0OTMuNzVDMjgwLjAyMyA0OTMuNDE3IDI3OS4zOTggNDkyLjkwMiAyNzguOTIgNDkyLjIwNUMyNzguNDQzIDQ5MS41MDggMjc4LjIwNSA0OTAuNjMzIDI3OC4yMDUgNDg5LjU4VjQ3Mi4zNjRaTTI5Ny42ODIgNDk0VjQ3MC43MjdIMzA2LjIwNUMzMDcuODU2IDQ3MC43MjcgMzA5LjIyMyA0NzEgMzEwLjMwNyA0NzEuNTQ1QzMxMS4zOSA0NzIuMDgzIDMxMi4yMDEgNDcyLjgxNCAzMTIuNzM5IDQ3My43MzlDMzEzLjI3NyA0NzQuNjU1IDMxMy41NDUgNDc1LjY4OSAzMTMuNTQ1IDQ3Ni44NDFDMzEzLjU0NSA0NzcuODExIDMxMy4zNjcgNDc4LjYyOSAzMTMuMDExIDQ3OS4yOTVDMzEyLjY1NSA0NzkuOTU1IDMxMi4xNzggNDgwLjQ4NSAzMTEuNTggNDgwLjg4NkMzMTAuOTg5IDQ4MS4yOCAzMTAuMzM3IDQ4MS41NjggMzA5LjYyNSA0ODEuNzVWNDgxLjk3N0MzMTAuMzk4IDQ4Mi4wMTUgMzExLjE1MiA0ODIuMjY1IDMxMS44ODYgNDgyLjcyN0MzMTIuNjI5IDQ4My4xODIgMzEzLjI0MiA0ODMuODMgMzEzLjcyNyA0ODQuNjdDMzE0LjIxMiA0ODUuNTExIDMxNC40NTUgNDg2LjUzNCAzMTQuNDU1IDQ4Ny43MzlDMzE0LjQ1NSA0ODguOTI4IDMxNC4xNzQgNDg5Ljk5NiAzMTMuNjE0IDQ5MC45NDNDMzEzLjA2MSA0OTEuODgzIDMxMi4yMDUgNDkyLjYyOSAzMTEuMDQ1IDQ5My4xODJDMzA5Ljg4NiA0OTMuNzI3IDMwOC40MDUgNDk0IDMwNi42MDIgNDk0SDI5Ny42ODJaTTMwMS4xOTMgNDkwLjk4OUgzMDYuMjYxQzMwNy45NDMgNDkwLjk4OSAzMDkuMTQ4IDQ5MC42NjMgMzA5Ljg3NSA0OTAuMDExQzMxMC42MDIgNDg5LjM2IDMxMC45NjYgNDg4LjU0NSAzMTAuOTY2IDQ4Ny41NjhDMzEwLjk2NiA0ODYuODMzIDMxMC43OCA0ODYuMTU5IDMxMC40MDkgNDg1LjU0NUMzMTAuMDM4IDQ4NC45MzIgMzA5LjUwOCA0ODQuNDQzIDMwOC44MTggNDg0LjA4QzMwOC4xMzYgNDgzLjcxNiAzMDcuMzI2IDQ4My41MzQgMzA2LjM4NiA0ODMuNTM0SDMwMS4xOTNWNDkwLjk4OVpNMzAxLjE5MyA0ODAuNzk1SDMwNS44OThDMzA2LjY4NiA0ODAuNzk1IDMwNy4zOTQgNDgwLjY0NCAzMDguMDIzIDQ4MC4zNDFDMzA4LjY1OSA0ODAuMDM4IDMwOS4xNjMgNDc5LjYxNCAzMDkuNTM0IDQ3OS4wNjhDMzA5LjkxMyA0NzguNTE1IDMxMC4xMDIgNDc3Ljg2NCAzMTAuMTAyIDQ3Ny4xMTRDMzEwLjEwMiA0NzYuMTUyIDMwOS43NjUgNDc1LjM0NSAzMDkuMDkxIDQ3NC42OTNDMzA4LjQxNyA0NzQuMDQyIDMwNy4zODMgNDczLjcxNiAzMDUuOTg5IDQ3My43MTZIMzAxLjE5M1Y0ODAuNzk1Wk0zMjAuNTg1IDQ5NEgzMTYuODU4TDMyNS4yMzMgNDcwLjcyN0gzMjkuMjlMMzM3LjY2NSA0OTRIMzMzLjkzOEwzMjcuMzU4IDQ3NC45NTVIMzI3LjE3NkwzMjAuNTg1IDQ5NFpNMzIxLjIxIDQ4NC44ODZIMzMzLjMwMVY0ODcuODQxSDMyMS4yMVY0ODQuODg2Wk0zNTkuMjYxIDQ3OC4yOTVIMzU1LjcxNkMzNTUuNTggNDc3LjUzOCAzNTUuMzI2IDQ3Ni44NzEgMzU0Ljk1NSA0NzYuMjk1QzM1NC41ODMgNDc1LjcyIDM1NC4xMjkgNDc1LjIzMSAzNTMuNTkxIDQ3NC44M0MzNTMuMDUzIDQ3NC40MjggMzUyLjQ1MSA0NzQuMTI1IDM1MS43ODQgNDczLjkyQzM1MS4xMjUgNDczLjcxNiAzNTAuNDI0IDQ3My42MTQgMzQ5LjY4MiA0NzMuNjE0QzM0OC4zNDEgNDczLjYxNCAzNDcuMTQgNDczLjk1MSAzNDYuMDggNDc0LjYyNUMzNDUuMDI3IDQ3NS4yOTkgMzQ0LjE5MyA0NzYuMjg4IDM0My41OCA0NzcuNTkxQzM0Mi45NzMgNDc4Ljg5NCAzNDIuNjcgNDgwLjQ4NSAzNDIuNjcgNDgyLjM2NEMzNDIuNjcgNDg0LjI1OCAzNDIuOTczIDQ4NS44NTYgMzQzLjU4IDQ4Ny4xNTlDMzQ0LjE5MyA0ODguNDYyIDM0NS4wMyA0ODkuNDQ3IDM0Ni4wOTEgNDkwLjExNEMzNDcuMTUyIDQ5MC43OCAzNDguMzQ1IDQ5MS4xMTQgMzQ5LjY3IDQ5MS4xMTRDMzUwLjQwNSA0OTEuMTE0IDM1MS4xMDIgNDkxLjAxNSAzNTEuNzYxIDQ5MC44MThDMzUyLjQyOCA0OTAuNjE0IDM1My4wMyA0OTAuMzE0IDM1My41NjggNDg5LjkyQzM1NC4xMDYgNDg5LjUyNyAzNTQuNTYxIDQ4OS4wNDUgMzU0LjkzMiA0ODguNDc3QzM1NS4zMTEgNDg3LjkwMiAzNTUuNTcyIDQ4Ny4yNDIgMzU1LjcxNiA0ODYuNUwzNTkuMjYxIDQ4Ni41MTFDMzU5LjA3MiA0ODcuNjU1IDM1OC43MDUgNDg4LjcwOCAzNTguMTU5IDQ4OS42N0MzNTcuNjIxIDQ5MC42MjUgMzU2LjkyOCA0OTEuNDUxIDM1Ni4wOCA0OTIuMTQ4QzM1NS4yMzkgNDkyLjgzNyAzNTQuMjc3IDQ5My4zNzEgMzUzLjE5MyA0OTMuNzVDMzUyLjExIDQ5NC4xMjkgMzUwLjkyOCA0OTQuMzE4IDM0OS42NDggNDk0LjMxOEMzNDcuNjMzIDQ5NC4zMTggMzQ1LjgzNyA0OTMuODQxIDM0NC4yNjEgNDkyLjg4NkMzNDIuNjg2IDQ5MS45MjQgMzQxLjQ0MyA0OTAuNTQ5IDM0MC41MzQgNDg4Ljc2MUMzMzkuNjMzIDQ4Ni45NzMgMzM5LjE4MiA0ODQuODQxIDMzOS4xODIgNDgyLjM2NEMzMzkuMTgyIDQ3OS44NzkgMzM5LjYzNiA0NzcuNzQ2IDM0MC41NDUgNDc1Ljk2NkMzNDEuNDU1IDQ3NC4xNzggMzQyLjY5NyA0NzIuODA3IDM0NC4yNzMgNDcxLjg1MkMzNDUuODQ4IDQ3MC44OSAzNDcuNjQgNDcwLjQwOSAzNDkuNjQ4IDQ3MC40MDlDMzUwLjg4MyA0NzAuNDA5IDM1Mi4wMzQgNDcwLjU4NyAzNTMuMTAyIDQ3MC45NDNDMzU0LjE3OCA0NzEuMjkyIDM1NS4xNDQgNDcxLjgwNyAzNTYgNDcyLjQ4OUMzNTYuODU2IDQ3My4xNjMgMzU3LjU2NCA0NzMuOTg5IDM1OC4xMjUgNDc0Ljk2NkMzNTguNjg2IDQ3NS45MzYgMzU5LjA2NCA0NzcuMDQ1IDM1OS4yNjEgNDc4LjI5NVpNMzYzLjQ2MyA0OTRWNDcwLjcyN0gzNjYuOTc0VjQ4MS44NDFIMzY3LjI1OUwzNzcuMDIgNDcwLjcyN0gzODEuNDRMMzcyLjA1NCA0ODEuMjA1TDM4MS40NzQgNDk0SDM3Ny4yNDdMMzY5LjcyNCA0ODMuNjAyTDM2Ni45NzQgNDg2Ljc2MVY0OTRIMzYzLjQ2M1pNMzg2LjY3OSA0OTQuMjE2QzM4Ni4wNTggNDk0LjIxNiAzODUuNTI0IDQ5My45OTYgMzg1LjA3NyA0OTMuNTU3QzM4NC42MyA0OTMuMTEgMzg0LjQwNiA0OTIuNTcyIDM4NC40MDYgNDkxLjk0M0MzODQuNDA2IDQ5MS4zMjIgMzg0LjYzIDQ5MC43OTIgMzg1LjA3NyA0OTAuMzUyQzM4NS41MjQgNDg5LjkwNSAzODYuMDU4IDQ4OS42ODIgMzg2LjY3OSA0ODkuNjgyQzM4Ny4zIDQ4OS42ODIgMzg3LjgzNCA0ODkuOTA1IDM4OC4yODEgNDkwLjM1MkMzODguNzI4IDQ5MC43OTIgMzg4Ljk1MiA0OTEuMzIyIDM4OC45NTIgNDkxLjk0M0MzODguOTUyIDQ5Mi4zNiAzODguODQ2IDQ5Mi43NDIgMzg4LjYzNCA0OTMuMDkxQzM4OC40MjkgNDkzLjQzMiAzODguMTU2IDQ5My43MDUgMzg3LjgxNSA0OTMuOTA5QzM4Ny40NzQgNDk0LjExNCAzODcuMDk2IDQ5NC4yMTYgMzg2LjY3OSA0OTQuMjE2Wk00MDAuNzIyIDQ3My43NVY0NzAuNzI3SDQxOC43MzNWNDczLjc1SDQxMS40NzJWNDk0SDQwNy45NzJWNDczLjc1SDQwMC43MjJaTTQyMC42MjggNDk0VjQ3Ni41NDVINDIzLjkxMlY0NzkuMzE4SDQyNC4wOTRDNDI0LjQxMiA0NzguMzc5IDQyNC45NzMgNDc3LjY0IDQyNS43NzYgNDc3LjEwMkM0MjYuNTg2IDQ3Ni41NTcgNDI3LjUwMyA0NzYuMjg0IDQyOC41MjYgNDc2LjI4NEM0MjguNzM4IDQ3Ni4yODQgNDI4Ljk4OCA0NzYuMjkyIDQyOS4yNzYgNDc2LjMwN0M0MjkuNTcxIDQ3Ni4zMjIgNDI5LjgwMiA0NzYuMzQxIDQyOS45NjkgNDc2LjM2NFY0NzkuNjE0QzQyOS44MzIgNDc5LjU3NiA0MjkuNTkgNDc5LjUzNCA0MjkuMjQxIDQ3OS40ODlDNDI4Ljg5MyA0NzkuNDM2IDQyOC41NDUgNDc5LjQwOSA0MjguMTk2IDQ3OS40MDlDNDI3LjM5MyA0NzkuNDA5IDQyNi42NzcgNDc5LjU4IDQyNi4wNDggNDc5LjkyQzQyNS40MjcgNDgwLjI1NCA0MjQuOTM1IDQ4MC43MiA0MjQuNTcxIDQ4MS4zMThDNDI0LjIwNyA0ODEuOTA5IDQyNC4wMjYgNDgyLjU4MyA0MjQuMDI2IDQ4My4zNDFWNDk0SDQyMC42MjhaTTQzNy44MzIgNDk0LjM4NkM0MzYuNzI2IDQ5NC4zODYgNDM1LjcyNiA0OTQuMTgyIDQzNC44MzIgNDkzLjc3M0M0MzMuOTM4IDQ5My4zNTYgNDMzLjIzIDQ5Mi43NTQgNDMyLjcwNyA0OTEuOTY2QzQzMi4xOTIgNDkxLjE3OCA0MzEuOTM1IDQ5MC4yMTIgNDMxLjkzNSA0ODkuMDY4QzQzMS45MzUgNDg4LjA4MyA0MzIuMTI0IDQ4Ny4yNzMgNDMyLjUwMyA0ODYuNjM2QzQzMi44ODIgNDg2IDQzMy4zOTMgNDg1LjQ5NiA0MzQuMDM3IDQ4NS4xMjVDNDM0LjY4MSA0ODQuNzU0IDQzNS40MDEgNDg0LjQ3MyA0MzYuMTk2IDQ4NC4yODRDNDM2Ljk5MSA0ODQuMDk1IDQzNy44MDIgNDgzLjk1MSA0MzguNjI4IDQ4My44NTJDNDM5LjY3MyA0ODMuNzMxIDQ0MC41MjIgNDgzLjYzMyA0NDEuMTczIDQ4My41NTdDNDQxLjgyNSA0ODMuNDczIDQ0Mi4yOTggNDgzLjM0MSA0NDIuNTk0IDQ4My4xNTlDNDQyLjg4OSA0ODIuOTc3IDQ0My4wMzcgNDgyLjY4MiA0NDMuMDM3IDQ4Mi4yNzNWNDgyLjE5M0M0NDMuMDM3IDQ4MS4yMDEgNDQyLjc1NyA0ODAuNDMyIDQ0Mi4xOTYgNDc5Ljg4NkM0NDEuNjQzIDQ3OS4zNDEgNDQwLjgxNyA0NzkuMDY4IDQzOS43MTkgNDc5LjA2OEM0MzguNTc1IDQ3OS4wNjggNDM3LjY3MyA0NzkuMzIyIDQzNy4wMTQgNDc5LjgzQzQzNi4zNjMgNDgwLjMzIDQzNS45MTIgNDgwLjg4NiA0MzUuNjYyIDQ4MS41TDQzMi40NjkgNDgwLjc3M0M0MzIuODQ4IDQ3OS43MTIgNDMzLjQwMSA0NzguODU2IDQzNC4xMjggNDc4LjIwNUM0MzQuODYzIDQ3Ny41NDUgNDM1LjcwNyA0NzcuMDY4IDQzNi42NjIgNDc2Ljc3M0M0MzcuNjE2IDQ3Ni40NyA0MzguNjIgNDc2LjMxOCA0MzkuNjczIDQ3Ni4zMThDNDQwLjM3IDQ3Ni4zMTggNDQxLjEwOSA0NzYuNDAyIDQ0MS44ODkgNDc2LjU2OEM0NDIuNjc3IDQ3Ni43MjcgNDQzLjQxMiA0NzcuMDIzIDQ0NC4wOTQgNDc3LjQ1NUM0NDQuNzgzIDQ3Ny44ODYgNDQ1LjM0OCA0NzguNTA0IDQ0NS43ODcgNDc5LjMwN0M0NDYuMjI2IDQ4MC4xMDIgNDQ2LjQ0NiA0ODEuMTM2IDQ0Ni40NDYgNDgyLjQwOVY0OTRINDQzLjEyOFY0OTEuNjE0SDQ0Mi45OTFDNDQyLjc3MiA0OTIuMDUzIDQ0Mi40NDIgNDkyLjQ4NSA0NDIuMDAzIDQ5Mi45MDlDNDQxLjU2MyA0OTMuMzMzIDQ0MC45OTkgNDkzLjY4NiA0NDAuMzEgNDkzLjk2NkM0MzkuNjIgNDk0LjI0NiA0MzguNzk1IDQ5NC4zODYgNDM3LjgzMiA0OTQuMzg2Wk00MzguNTcxIDQ5MS42NTlDNDM5LjUxIDQ5MS42NTkgNDQwLjMxMyA0OTEuNDczIDQ0MC45OCA0OTEuMTAyQzQ0MS42NTQgNDkwLjczMSA0NDIuMTY2IDQ5MC4yNDYgNDQyLjUxNCA0ODkuNjQ4QzQ0Mi44NyA0ODkuMDQyIDQ0My4wNDggNDg4LjM5NCA0NDMuMDQ4IDQ4Ny43MDVWNDg1LjQ1NUM0NDIuOTI3IDQ4NS41NzYgNDQyLjY5MiA0ODUuNjg5IDQ0Mi4zNDQgNDg1Ljc5NUM0NDIuMDAzIDQ4NS44OTQgNDQxLjYxMyA0ODUuOTgxIDQ0MS4xNzMgNDg2LjA1N0M0NDAuNzM0IDQ4Ni4xMjUgNDQwLjMwNiA0ODYuMTg5IDQzOS44ODkgNDg2LjI1QzQzOS40NzMgNDg2LjMwMyA0MzkuMTI0IDQ4Ni4zNDggNDM4Ljg0NCA0ODYuMzg2QzQzOC4xODUgNDg2LjQ3IDQzNy41ODIgNDg2LjYxIDQzNy4wMzcgNDg2LjgwN0M0MzYuNDk5IDQ4Ny4wMDQgNDM2LjA2NyA0ODcuMjg4IDQzNS43NDEgNDg3LjY1OUM0MzUuNDIzIDQ4OC4wMjMgNDM1LjI2NCA0ODguNTA4IDQzNS4yNjQgNDg5LjExNEM0MzUuMjY0IDQ4OS45NTUgNDM1LjU3NSA0OTAuNTkxIDQzNi4xOTYgNDkxLjAyM0M0MzYuODE3IDQ5MS40NDcgNDM3LjYwOSA0OTEuNjU5IDQzOC41NzEgNDkxLjY1OVpNNDY1LjI3OCA0NzYuNTQ1TDQ1OC45NDkgNDk0SDQ1NS4zMTJMNDQ4Ljk3MiA0NzYuNTQ1SDQ1Mi42MTlMNDU3LjA0IDQ4OS45NzdINDU3LjIyMkw0NjEuNjMxIDQ3Ni41NDVINDY1LjI3OFpNNDc1LjQwMSA0OTQuMzUyQzQ3My42ODEgNDk0LjM1MiA0NzIuMiA0OTMuOTg1IDQ3MC45NTcgNDkzLjI1QzQ2OS43MjMgNDkyLjUwOCA0NjguNzY4IDQ5MS40NjYgNDY4LjA5NCA0OTAuMTI1QzQ2Ny40MjcgNDg4Ljc3NyA0NjcuMDk0IDQ4Ny4xOTcgNDY3LjA5NCA0ODUuMzg2QzQ2Ny4wOTQgNDgzLjU5OCA0NjcuNDI3IDQ4Mi4wMjMgNDY4LjA5NCA0ODAuNjU5QzQ2OC43NjggNDc5LjI5NSA0NjkuNzA3IDQ3OC4yMzEgNDcwLjkxMiA0NzcuNDY2QzQ3Mi4xMjQgNDc2LjcwMSA0NzMuNTQxIDQ3Ni4zMTggNDc1LjE2MiA0NzYuMzE4QzQ3Ni4xNDcgNDc2LjMxOCA0NzcuMTAxIDQ3Ni40ODEgNDc4LjAyNiA0NzYuODA3QzQ3OC45NSA0NzcuMTMzIDQ3OS43NzkgNDc3LjY0NCA0ODAuNTE0IDQ3OC4zNDFDNDgxLjI0OSA0NzkuMDM4IDQ4MS44MjkgNDc5Ljk0MyA0ODIuMjUzIDQ4MS4wNTdDNDgyLjY3NyA0ODIuMTYzIDQ4Mi44ODkgNDgzLjUwOCA0ODIuODg5IDQ4NS4wOTFWNDg2LjI5NUg0NjkuMDE0VjQ4My43NUg0NzkuNTZDNDc5LjU2IDQ4Mi44NTYgNDc5LjM3OCA0ODIuMDY0IDQ3OS4wMTQgNDgxLjM3NUM0NzguNjUxIDQ4MC42NzggNDc4LjEzOSA0ODAuMTI5IDQ3Ny40OCA0NzkuNzI3QzQ3Ni44MjkgNDc5LjMyNiA0NzYuMDYzIDQ3OS4xMjUgNDc1LjE4NSA0NzkuMTI1QzQ3NC4yMyA0NzkuMTI1IDQ3My4zOTcgNDc5LjM2IDQ3Mi42ODUgNDc5LjgzQzQ3MS45OCA0ODAuMjkyIDQ3MS40MzUgNDgwLjg5OCA0NzEuMDQ4IDQ4MS42NDhDNDcwLjY3IDQ4Mi4zOSA0NzAuNDggNDgzLjE5NyA0NzAuNDggNDg0LjA2OFY0ODYuMDU3QzQ3MC40OCA0ODcuMjIzIDQ3MC42ODUgNDg4LjIxNiA0NzEuMDk0IDQ4OS4wMzRDNDcxLjUxIDQ4OS44NTIgNDcyLjA5IDQ5MC40NzcgNDcyLjgzMiA0OTAuOTA5QzQ3My41NzUgNDkxLjMzMyA0NzQuNDQyIDQ5MS41NDUgNDc1LjQzNSA0OTEuNTQ1QzQ3Ni4wNzkgNDkxLjU0NSA0NzYuNjY2IDQ5MS40NTUgNDc3LjE5NiA0OTEuMjczQzQ3Ny43MjYgNDkxLjA4MyA0NzguMTg1IDQ5MC44MDMgNDc4LjU3MSA0OTAuNDMyQzQ3OC45NTcgNDkwLjA2MSA0NzkuMjUzIDQ4OS42MDIgNDc5LjQ1NyA0ODkuMDU3TDQ4Mi42NzMgNDg5LjYzNkM0ODIuNDE2IDQ5MC41ODMgNDgxLjk1NCA0OTEuNDEzIDQ4MS4yODcgNDkyLjEyNUM0ODAuNjI4IDQ5Mi44MyA0NzkuNzk4IDQ5My4zNzkgNDc4Ljc5OCA0OTMuNzczQzQ3Ny44MDYgNDk0LjE1OSA0NzYuNjczIDQ5NC4zNTIgNDc1LjQwMSA0OTQuMzUyWk00OTAuMDU3IDQ3MC43MjdWNDk0SDQ4Ni42NTlWNDcwLjcyN0g0OTAuMDU3Wk00OTYuODY2IDQ5NC4yMTZDNDk2LjI0NSA0OTQuMjE2IDQ5NS43MTEgNDkzLjk5NiA0OTUuMjY0IDQ5My41NTdDNDk0LjgxNyA0OTMuMTEgNDk0LjU5NCA0OTIuNTcyIDQ5NC41OTQgNDkxLjk0M0M0OTQuNTk0IDQ5MS4zMjIgNDk0LjgxNyA0OTAuNzkyIDQ5NS4yNjQgNDkwLjM1MkM0OTUuNzExIDQ4OS45MDUgNDk2LjI0NSA0ODkuNjgyIDQ5Ni44NjYgNDg5LjY4MkM0OTcuNDg4IDQ4OS42ODIgNDk4LjAyMiA0ODkuOTA1IDQ5OC40NjkgNDkwLjM1MkM0OTguOTE2IDQ5MC43OTIgNDk5LjEzOSA0OTEuMzIyIDQ5OS4xMzkgNDkxLjk0M0M0OTkuMTM5IDQ5Mi4zNiA0OTkuMDMzIDQ5Mi43NDIgNDk4LjgyMSA0OTMuMDkxQzQ5OC42MTYgNDkzLjQzMiA0OTguMzQ0IDQ5My43MDUgNDk4LjAwMyA0OTMuOTA5QzQ5Ny42NjIgNDk0LjExNCA0OTcuMjgzIDQ5NC4yMTYgNDk2Ljg2NiA0OTQuMjE2Wk01MTIuMDU3IDQ5NFY0NzAuNzI3SDUyMC4zNTJDNTIyLjE1NSA0NzAuNzI3IDUyMy42NTIgNDcxLjAzOCA1MjQuODQxIDQ3MS42NTlDNTI2LjAzOCA0NzIuMjggNTI2LjkzMiA0NzMuMTQgNTI3LjUyMyA0NzQuMjM5QzUyOC4xMTQgNDc1LjMzIDUyOC40MDkgNDc2LjU5MSA1MjguNDA5IDQ3OC4wMjNDNTI4LjQwOSA0NzkuNDQ3IDUyOC4xMSA0ODAuNzAxIDUyNy41MTEgNDgxLjc4NEM1MjYuOTIgNDgyLjg2IDUyNi4wMjcgNDgzLjY5NyA1MjQuODMgNDg0LjI5NUM1MjMuNjQgNDg0Ljg5NCA1MjIuMTQ0IDQ4NS4xOTMgNTIwLjM0MSA0ODUuMTkzSDUxNC4wNTdWNDgyLjE3SDUyMC4wMjNDNTIxLjE1OSA0ODIuMTcgNTIyLjA4MyA0ODIuMDA4IDUyMi43OTUgNDgxLjY4MkM1MjMuNTE1IDQ4MS4zNTYgNTI0LjA0MiA0ODAuODgzIDUyNC4zNzUgNDgwLjI2MUM1MjQuNzA4IDQ3OS42NCA1MjQuODc1IDQ3OC44OTQgNTI0Ljg3NSA0NzguMDIzQzUyNC44NzUgNDc3LjE0NCA1MjQuNzA1IDQ3Ni4zODMgNTI0LjM2NCA0NzUuNzM5QzUyNC4wMyA0NzUuMDk1IDUyMy41MDQgNDc0LjYwMiA1MjIuNzg0IDQ3NC4yNjFDNTIyLjA3MiA0NzMuOTEzIDUyMS4xMzYgNDczLjczOSA1MTkuOTc3IDQ3My43MzlINTE1LjU2OFY0OTRINTEyLjA1N1pNNTIzLjU0NSA0ODMuNUw1MjkuMjk1IDQ5NEg1MjUuMjk1TDUxOS42NTkgNDgzLjVINTIzLjU0NVpNNTM5LjcxMyA0OTQuMzUyQzUzNy45OTMgNDk0LjM1MiA1MzYuNTEyIDQ5My45ODUgNTM1LjI3IDQ5My4yNUM1MzQuMDM1IDQ5Mi41MDggNTMzLjA4IDQ5MS40NjYgNTMyLjQwNiA0OTAuMTI1QzUzMS43NCA0ODguNzc3IDUzMS40MDYgNDg3LjE5NyA1MzEuNDA2IDQ4NS4zODZDNTMxLjQwNiA0ODMuNTk4IDUzMS43NCA0ODIuMDIzIDUzMi40MDYgNDgwLjY1OUM1MzMuMDggNDc5LjI5NSA1MzQuMDIgNDc4LjIzMSA1MzUuMjI0IDQ3Ny40NjZDNTM2LjQzNyA0NzYuNzAxIDUzNy44NTMgNDc2LjMxOCA1MzkuNDc0IDQ3Ni4zMThDNTQwLjQ1OSA0NzYuMzE4IDU0MS40MTQgNDc2LjQ4MSA1NDIuMzM4IDQ3Ni44MDdDNTQzLjI2MiA0NzcuMTMzIDU0NC4wOTIgNDc3LjY0NCA1NDQuODI3IDQ3OC4zNDFDNTQ1LjU2MiA0NzkuMDM4IDU0Ni4xNDEgNDc5Ljk0MyA1NDYuNTY1IDQ4MS4wNTdDNTQ2Ljk5IDQ4Mi4xNjMgNTQ3LjIwMiA0ODMuNTA4IDU0Ny4yMDIgNDg1LjA5MVY0ODYuMjk1SDUzMy4zMjdWNDgzLjc1SDU0My44NzJDNTQzLjg3MiA0ODIuODU2IDU0My42OSA0ODIuMDY0IDU0My4zMjcgNDgxLjM3NUM1NDIuOTYzIDQ4MC42NzggNTQyLjQ1MiA0ODAuMTI5IDU0MS43OTMgNDc5LjcyN0M1NDEuMTQxIDQ3OS4zMjYgNTQwLjM3NiA0NzkuMTI1IDUzOS40OTcgNDc5LjEyNUM1MzguNTQzIDQ3OS4xMjUgNTM3LjcwOSA0NzkuMzYgNTM2Ljk5NyA0NzkuODNDNTM2LjI5MyA0ODAuMjkyIDUzNS43NDcgNDgwLjg5OCA1MzUuMzYxIDQ4MS42NDhDNTM0Ljk4MiA0ODIuMzkgNTM0Ljc5MyA0ODMuMTk3IDUzNC43OTMgNDg0LjA2OFY0ODYuMDU3QzUzNC43OTMgNDg3LjIyMyA1MzQuOTk3IDQ4OC4yMTYgNTM1LjQwNiA0ODkuMDM0QzUzNS44MjMgNDg5Ljg1MiA1MzYuNDAyIDQ5MC40NzcgNTM3LjE0NSA0OTAuOTA5QzUzNy44ODcgNDkxLjMzMyA1MzguNzU1IDQ5MS41NDUgNTM5Ljc0NyA0OTEuNTQ1QzU0MC4zOTEgNDkxLjU0NSA1NDAuOTc4IDQ5MS40NTUgNTQxLjUwOSA0OTEuMjczQzU0Mi4wMzkgNDkxLjA4MyA1NDIuNDk3IDQ5MC44MDMgNTQyLjg4NCA0OTAuNDMyQzU0My4yNyA0OTAuMDYxIDU0My41NjUgNDg5LjYwMiA1NDMuNzcgNDg5LjA1N0w1NDYuOTg2IDQ4OS42MzZDNTQ2LjcyOCA0OTAuNTgzIDU0Ni4yNjYgNDkxLjQxMyA1NDUuNTk5IDQ5Mi4xMjVDNTQ0Ljk0IDQ5Mi44MyA1NDQuMTExIDQ5My4zNzkgNTQzLjExMSA0OTMuNzczQzU0Mi4xMTggNDk0LjE1OSA1NDAuOTg2IDQ5NC4zNTIgNTM5LjcxMyA0OTQuMzUyWk01NTAuOTcyIDUwMC41NDVWNDc2LjU0NUg1NTQuMjlWNDc5LjM3NUg1NTQuNTc0QzU1NC43NzEgNDc5LjAxMSA1NTUuMDU1IDQ3OC41OTEgNTU1LjQyNiA0NzguMTE0QzU1NS43OTcgNDc3LjYzNiA1NTYuMzEzIDQ3Ny4yMiA1NTYuOTcyIDQ3Ni44NjRDNTU3LjYzMSA0NzYuNSA1NTguNTAyIDQ3Ni4zMTggNTU5LjU4NSA0NzYuMzE4QzU2MC45OTQgNDc2LjMxOCA1NjIuMjUyIDQ3Ni42NzQgNTYzLjM1OCA0NzcuMzg2QzU2NC40NjQgNDc4LjA5OCA1NjUuMzMxIDQ3OS4xMjUgNTY1Ljk2IDQ4MC40NjZDNTY2LjU5NyA0ODEuODA3IDU2Ni45MTUgNDgzLjQyIDU2Ni45MTUgNDg1LjMwN0M1NjYuOTE1IDQ4Ny4xOTMgNTY2LjYgNDg4LjgxMSA1NjUuOTcyIDQ5MC4xNTlDNTY1LjM0MyA0OTEuNSA1NjQuNDc5IDQ5Mi41MzQgNTYzLjM4MSA0OTMuMjYxQzU2Mi4yODIgNDkzLjk4MSA1NjEuMDI4IDQ5NC4zNDEgNTU5LjYxOSA0OTQuMzQxQzU1OC41NTkgNDk0LjM0MSA1NTcuNjkxIDQ5NC4xNjMgNTU3LjAxNyA0OTMuODA3QzU1Ni4zNSA0OTMuNDUxIDU1NS44MjggNDkzLjAzNCA1NTUuNDQ5IDQ5Mi41NTdDNTU1LjA3IDQ5Mi4wOCA1NTQuNzc4IDQ5MS42NTUgNTU0LjU3NCA0OTEuMjg0SDU1NC4zNjlWNTAwLjU0NUg1NTAuOTcyWk01NTQuMzAxIDQ4NS4yNzNDNTU0LjMwMSA0ODYuNSA1NTQuNDc5IDQ4Ny41NzYgNTU0LjgzNSA0ODguNUM1NTUuMTkxIDQ4OS40MjQgNTU1LjcwNiA0OTAuMTQ4IDU1Ni4zODEgNDkwLjY3QzU1Ny4wNTUgNDkxLjE4NiA1NTcuODgxIDQ5MS40NDMgNTU4Ljg1OCA0OTEuNDQzQzU1OS44NzMgNDkxLjQ0MyA1NjAuNzIyIDQ5MS4xNzQgNTYxLjQwMyA0OTAuNjM2QzU2Mi4wODUgNDkwLjA5MSA1NjIuNiA0ODkuMzUyIDU2Mi45NDkgNDg4LjQyQzU2My4zMDUgNDg3LjQ4OSA1NjMuNDgzIDQ4Ni40MzkgNTYzLjQ4MyA0ODUuMjczQzU2My40ODMgNDg0LjEyMSA1NjMuMzA5IDQ4My4wODcgNTYyLjk2IDQ4Mi4xN0M1NjIuNjE5IDQ4MS4yNTQgNTYyLjEwNCA0ODAuNTMgNTYxLjQxNSA0ODBDNTYwLjczMyA0NzkuNDcgNTU5Ljg4MSA0NzkuMjA1IDU1OC44NTggNDc5LjIwNUM1NTcuODczIDQ3OS4yMDUgNTU3LjA0IDQ3OS40NTggNTU2LjM1OCA0NzkuOTY2QzU1NS42ODQgNDgwLjQ3MyA1NTUuMTcyIDQ4MS4xODIgNTU0LjgyNCA0ODIuMDkxQzU1NC40NzUgNDgzIDU1NC4zMDEgNDg0LjA2MSA1NTQuMzAxIDQ4NS4yNzNaTTU3OC4yNDQgNDk0LjM1MkM1NzYuNTI1IDQ5NC4zNTIgNTc1LjA0NCA0OTMuOTg1IDU3My44MDEgNDkzLjI1QzU3Mi41NjYgNDkyLjUwOCA1NzEuNjEyIDQ5MS40NjYgNTcwLjkzOCA0OTAuMTI1QzU3MC4yNzEgNDg4Ljc3NyA1NjkuOTM4IDQ4Ny4xOTcgNTY5LjkzOCA0ODUuMzg2QzU2OS45MzggNDgzLjU5OCA1NzAuMjcxIDQ4Mi4wMjMgNTcwLjkzOCA0ODAuNjU5QzU3MS42MTIgNDc5LjI5NSA1NzIuNTUxIDQ3OC4yMzEgNTczLjc1NiA0NzcuNDY2QzU3NC45NjggNDc2LjcwMSA1NzYuMzg0IDQ3Ni4zMTggNTc4LjAwNiA0NzYuMzE4QzU3OC45OTEgNDc2LjMxOCA1NzkuOTQ1IDQ3Ni40ODEgNTgwLjg2OSA0NzYuODA3QzU4MS43OTQgNDc3LjEzMyA1ODIuNjIzIDQ3Ny42NDQgNTgzLjM1OCA0NzguMzQxQzU4NC4wOTMgNDc5LjAzOCA1ODQuNjcyIDQ3OS45NDMgNTg1LjA5NyA0ODEuMDU3QzU4NS41MjEgNDgyLjE2MyA1ODUuNzMzIDQ4My41MDggNTg1LjczMyA0ODUuMDkxVjQ4Ni4yOTVINTcxLjg1OFY0ODMuNzVINTgyLjQwM0M1ODIuNDAzIDQ4Mi44NTYgNTgyLjIyMiA0ODIuMDY0IDU4MS44NTggNDgxLjM3NUM1ODEuNDk0IDQ4MC42NzggNTgwLjk4MyA0ODAuMTI5IDU4MC4zMjQgNDc5LjcyN0M1NzkuNjcyIDQ3OS4zMjYgNTc4LjkwNyA0NzkuMTI1IDU3OC4wMjggNDc5LjEyNUM1NzcuMDc0IDQ3OS4xMjUgNTc2LjI0MSA0NzkuMzYgNTc1LjUyOCA0NzkuODNDNTc0LjgyNCA0ODAuMjkyIDU3NC4yNzggNDgwLjg5OCA1NzMuODkyIDQ4MS42NDhDNTczLjUxMyA0ODIuMzkgNTczLjMyNCA0ODMuMTk3IDU3My4zMjQgNDg0LjA2OFY0ODYuMDU3QzU3My4zMjQgNDg3LjIyMyA1NzMuNTI4IDQ4OC4yMTYgNTczLjkzOCA0ODkuMDM0QzU3NC4zNTQgNDg5Ljg1MiA1NzQuOTM0IDQ5MC40NzcgNTc1LjY3NiA0OTAuOTA5QzU3Ni40MTkgNDkxLjMzMyA1NzcuMjg2IDQ5MS41NDUgNTc4LjI3OCA0OTEuNTQ1QzU3OC45MjIgNDkxLjU0NSA1NzkuNTA5IDQ5MS40NTUgNTgwLjA0IDQ5MS4yNzNDNTgwLjU3IDQ5MS4wODMgNTgxLjAyOCA0OTAuODAzIDU4MS40MTUgNDkwLjQzMkM1ODEuODAxIDQ5MC4wNjEgNTgyLjA5NyA0ODkuNjAyIDU4Mi4zMDEgNDg5LjA1N0w1ODUuNTE3IDQ4OS42MzZDNTg1LjI1OSA0OTAuNTgzIDU4NC43OTcgNDkxLjQxMyA1ODQuMTMxIDQ5Mi4xMjVDNTgzLjQ3MiA0OTIuODMgNTgyLjY0MiA0OTMuMzc5IDU4MS42NDIgNDkzLjc3M0M1ODAuNjUgNDk0LjE1OSA1NzkuNTE3IDQ5NC4zNTIgNTc4LjI0NCA0OTQuMzUyWk01OTQuNTgyIDQ5NC4zODZDNTkzLjQ3NiA0OTQuMzg2IDU5Mi40NzYgNDk0LjE4MiA1OTEuNTgyIDQ5My43NzNDNTkwLjY4OCA0OTMuMzU2IDU4OS45OCA0OTIuNzU0IDU4OS40NTcgNDkxLjk2NkM1ODguOTQyIDQ5MS4xNzggNTg4LjY4NSA0OTAuMjEyIDU4OC42ODUgNDg5LjA2OEM1ODguNjg1IDQ4OC4wODMgNTg4Ljg3NCA0ODcuMjczIDU4OS4yNTMgNDg2LjYzNkM1ODkuNjMyIDQ4NiA1OTAuMTQzIDQ4NS40OTYgNTkwLjc4NyA0ODUuMTI1QzU5MS40MzEgNDg0Ljc1NCA1OTIuMTUxIDQ4NC40NzMgNTkyLjk0NiA0ODQuMjg0QzU5My43NDEgNDg0LjA5NSA1OTQuNTUyIDQ4My45NTEgNTk1LjM3OCA0ODMuODUyQzU5Ni40MjMgNDgzLjczMSA1OTcuMjcyIDQ4My42MzMgNTk3LjkyMyA0ODMuNTU3QzU5OC41NzUgNDgzLjQ3MyA1OTkuMDQ4IDQ4My4zNDEgNTk5LjM0NCA0ODMuMTU5QzU5OS42MzkgNDgyLjk3NyA1OTkuNzg3IDQ4Mi42ODIgNTk5Ljc4NyA0ODIuMjczVjQ4Mi4xOTNDNTk5Ljc4NyA0ODEuMjAxIDU5OS41MDcgNDgwLjQzMiA1OTguOTQ2IDQ3OS44ODZDNTk4LjM5MyA0NzkuMzQxIDU5Ny41NjcgNDc5LjA2OCA1OTYuNDY5IDQ3OS4wNjhDNTk1LjMyNSA0NzkuMDY4IDU5NC40MjMgNDc5LjMyMiA1OTMuNzY0IDQ3OS44M0M1OTMuMTEzIDQ4MC4zMyA1OTIuNjYyIDQ4MC44ODYgNTkyLjQxMiA0ODEuNUw1ODkuMjE5IDQ4MC43NzNDNTg5LjU5OCA0NzkuNzEyIDU5MC4xNTEgNDc4Ljg1NiA1OTAuODc4IDQ3OC4yMDVDNTkxLjYxMyA0NzcuNTQ1IDU5Mi40NTcgNDc3LjA2OCA1OTMuNDEyIDQ3Ni43NzNDNTk0LjM2NiA0NzYuNDcgNTk1LjM3IDQ3Ni4zMTggNTk2LjQyMyA0NzYuMzE4QzU5Ny4xMiA0NzYuMzE4IDU5Ny44NTkgNDc2LjQwMiA1OTguNjM5IDQ3Ni41NjhDNTk5LjQyNyA0NzYuNzI3IDYwMC4xNjIgNDc3LjAyMyA2MDAuODQ0IDQ3Ny40NTVDNjAxLjUzMyA0NzcuODg2IDYwMi4wOTggNDc4LjUwNCA2MDIuNTM3IDQ3OS4zMDdDNjAyLjk3NiA0ODAuMTAyIDYwMy4xOTYgNDgxLjEzNiA2MDMuMTk2IDQ4Mi40MDlWNDk0SDU5OS44NzhWNDkxLjYxNEg1OTkuNzQxQzU5OS41MjIgNDkyLjA1MyA1OTkuMTkyIDQ5Mi40ODUgNTk4Ljc1MyA0OTIuOTA5QzU5OC4zMTMgNDkzLjMzMyA1OTcuNzQ5IDQ5My42ODYgNTk3LjA2IDQ5My45NjZDNTk2LjM3IDQ5NC4yNDYgNTk1LjU0NSA0OTQuMzg2IDU5NC41ODIgNDk0LjM4NlpNNTk1LjMyMSA0OTEuNjU5QzU5Ni4yNiA0OTEuNjU5IDU5Ny4wNjMgNDkxLjQ3MyA1OTcuNzMgNDkxLjEwMkM1OTguNDA0IDQ5MC43MzEgNTk4LjkxNiA0OTAuMjQ2IDU5OS4yNjQgNDg5LjY0OEM1OTkuNjIgNDg5LjA0MiA1OTkuNzk4IDQ4OC4zOTQgNTk5Ljc5OCA0ODcuNzA1VjQ4NS40NTVDNTk5LjY3NyA0ODUuNTc2IDU5OS40NDIgNDg1LjY4OSA1OTkuMDk0IDQ4NS43OTVDNTk4Ljc1MyA0ODUuODk0IDU5OC4zNjMgNDg1Ljk4MSA1OTcuOTIzIDQ4Ni4wNTdDNTk3LjQ4NCA0ODYuMTI1IDU5Ny4wNTYgNDg2LjE4OSA1OTYuNjM5IDQ4Ni4yNUM1OTYuMjIzIDQ4Ni4zMDMgNTk1Ljg3NCA0ODYuMzQ4IDU5NS41OTQgNDg2LjM4NkM1OTQuOTM1IDQ4Ni40NyA1OTQuMzMyIDQ4Ni42MSA1OTMuNzg3IDQ4Ni44MDdDNTkzLjI0OSA0ODcuMDA0IDU5Mi44MTcgNDg3LjI4OCA1OTIuNDkxIDQ4Ny42NTlDNTkyLjE3MyA0ODguMDIzIDU5Mi4wMTQgNDg4LjUwOCA1OTIuMDE0IDQ4OS4xMTRDNTkyLjAxNCA0ODkuOTU1IDU5Mi4zMjUgNDkwLjU5MSA1OTIuOTQ2IDQ5MS4wMjNDNTkzLjU2NyA0OTEuNDQ3IDU5NC4zNTkgNDkxLjY1OSA1OTUuMzIxIDQ5MS42NTlaTTYxNS44NjkgNDc2LjU0NVY0NzkuMjczSDYwNi4zMzVWNDc2LjU0NUg2MTUuODY5Wk02MDguODkyIDQ3Mi4zNjRINjEyLjI5VjQ4OC44NzVDNjEyLjI5IDQ4OS41MzQgNjEyLjM4OCA0OTAuMDMgNjEyLjU4NSA0OTAuMzY0QzYxMi43ODIgNDkwLjY4OSA2MTMuMDM2IDQ5MC45MTMgNjEzLjM0NyA0OTEuMDM0QzYxMy42NjUgNDkxLjE0OCA2MTQuMDA5IDQ5MS4yMDUgNjE0LjM4MSA0OTEuMjA1QzYxNC42NTMgNDkxLjIwNSA2MTQuODkyIDQ5MS4xODYgNjE1LjA5NyA0OTEuMTQ4QzYxNS4zMDEgNDkxLjExIDYxNS40NiA0OTEuMDggNjE1LjU3NCA0OTEuMDU3TDYxNi4xODggNDkzLjg2NEM2MTUuOTkxIDQ5My45MzkgNjE1LjcxIDQ5NC4wMTUgNjE1LjM0NyA0OTQuMDkxQzYxNC45ODMgNDk0LjE3NCA2MTQuNTI4IDQ5NC4yMiA2MTMuOTgzIDQ5NC4yMjdDNjEzLjA4OSA0OTQuMjQyIDYxMi4yNTYgNDk0LjA4MyA2MTEuNDgzIDQ5My43NUM2MTAuNzEgNDkzLjQxNyA2MTAuMDg1IDQ5Mi45MDIgNjA5LjYwOCA0OTIuMjA1QzYwOS4xMzEgNDkxLjUwOCA2MDguODkyIDQ5MC42MzMgNjA4Ljg5MiA0ODkuNThWNDcyLjM2NFpNNjIxLjg2NiA0OTQuMjE2QzYyMS4yNDUgNDk0LjIxNiA2MjAuNzExIDQ5My45OTYgNjIwLjI2NCA0OTMuNTU3QzYxOS44MTcgNDkzLjExIDYxOS41OTQgNDkyLjU3MiA2MTkuNTk0IDQ5MS45NDNDNjE5LjU5NCA0OTEuMzIyIDYxOS44MTcgNDkwLjc5MiA2MjAuMjY0IDQ5MC4zNTJDNjIwLjcxMSA0ODkuOTA1IDYyMS4yNDUgNDg5LjY4MiA2MjEuODY2IDQ4OS42ODJDNjIyLjQ4OCA0ODkuNjgyIDYyMy4wMjIgNDg5LjkwNSA2MjMuNDY5IDQ5MC4zNTJDNjIzLjkxNiA0OTAuNzkyIDYyNC4xMzkgNDkxLjMyMiA2MjQuMTM5IDQ5MS45NDNDNjI0LjEzOSA0OTIuMzYgNjI0LjAzMyA0OTIuNzQyIDYyMy44MjEgNDkzLjA5MUM2MjMuNjE2IDQ5My40MzIgNjIzLjM0NCA0OTMuNzA1IDYyMy4wMDMgNDkzLjkwOUM2MjIuNjYyIDQ5NC4xMTQgNjIyLjI4MyA0OTQuMjE2IDYyMS44NjYgNDk0LjIxNloiLz4KPC9zdmc+" width="218" height="42">
-</div>
-<a class="tb-home-link" href="index.html">← Tech Hub</a><nav class="nav">
-<h4>Endpoints</h4>
-<a href="#intro-pt">Introdução &amp; Autenticação</a>
-<a href="#public-search-pt">GET /api/Public/search</a>
-<a href="#client-balance-pt">GET /api/client/{id}/balance</a>
-<a href="#cliente-debito-pt">POST /api/cliente/{id}/cashback/Debit</a>
-<a href="#cliente-debito-confirm-pt">POST /api/cliente/{id}/cashback/DebitConfirm</a>
-<a href="#cliente-terms-accept-pt">POST /api/cliente/{id}/terms/accept</a>
-<a href="#cliente-terms-accept-route-pt">POST /api/cliente/{id}/terms/{contentId}/accept</a>
-<a href="#env-pt">GET /api/Public/environment</a>
-<a href="#pingpong-pt">POST /api/Public/pingpong</a>
-<a href="#queue-pt">POST /api/Public/queue</a>
-<h4>Models</h4>
-<a href="#models-pt">Modelos de Request &amp; Response</a>
-</nav>
-</aside>
-<main id="main-content-pt">
-<section id="intro-pt">
-<h1>TravelBACK Cashback API <span class="pill">v4.2</span></h1>
-<p>Bem-vindo à documentação pública da <strong>TravelBACK Cashback API</strong>. Esta API permite integrações com o ecossistema de cashback da TravelBACK, oferecendo endpoints para consulta de saldo, registro de débitos e comunicação assíncrona com o backend.</p>
-<h3>Autenticação</h3>
-<p>Todos os endpoints exigem autenticação via header <code>x-client-key</code>.</p>
-<pre><code>x-client-key: &lt;SEU_CLIENT_KEY&gt;</code></pre>
-</section>
-
-<section id="public-search-pt">
-<h2><span class="method GET">GET</span> /api/Public/search</h2>
-<p>Busca por contas na base de cashback. Se a query estiver vazia, retorna as últimas 30 contas acessadas.</p>
+<section id="public-search">
+<h2>Legacy: Search</h2>
+<p>Legacy compatibility. Retained for existing integrations. For new integrations, use <a href="#resolve-navigation-code">Resolve Navigation Code</a>. The <code>GET /api/Public/GetAccount</code> endpoint remains in the contract but is not a step in the recommended flow.</p>
+<details>
+<summary>GET /api/Public/search</summary>
+<p>Search for accounts in the cashback database. If query is empty, returns the last 30 accessed accounts.</p>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table / Tabela da documentação"><table>
-<thead><tr><th>Parâmetro</th><th>Tipo</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
+<thead><tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>query</td><td>String</td><td>Não</td><td>Texto de busca (email, telefone, ID da conta ou nome). Se vazio, retorna últimas 30 contas acessadas.</td></tr>
+<tr><td>query</td><td>String</td><td>No</td><td>Search query (email, phone, account ID, or name). If empty, returns last 30 accessed accounts.</td></tr>
 </tbody>
 </table>
-</div><h3>Exemplo de requisição</h3>
+</div><h3>Request example</h3>
 <pre><code>curl -X GET "https://travelcashcustomurl.azurewebsites.net/api/Public/search?query=ana@exemplo.com" \
-  -H "x-client-key: &lt;SEU_CLIENT_KEY&gt;"</code></pre>
-<h3>Resposta 200 (exemplo)</h3>
+  -H "x-client-key: &lt;YOUR_CLIENT_KEY&gt;"</code></pre>
+<h3>200 Response (example)</h3>
 <pre><code>[
   {
     "account": {
@@ -768,6 +830,210 @@ pre,code{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Consolas,monos
     }
   }
 ]</code></pre>
+</details>
+</section>
+
+<div class="footer">
+© 2025 TravelBACK Cashback API – v5.0. All rights reserved.
+</div>
+</main>
+</div>
+</section>
+
+<section data-lang="pt" id="lang-pt" hidden="hidden" lang="pt-BR">
+<div class="wrapper">
+<aside>
+<div class="brand">
+<img alt="TravelBACK" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGZpbGw9Im5vbmUiIHZpZXdCb3g9IjE1NC45OTIzNjY0MTIyMTM3MyAzNTkuMjY0IDU1NS42NjQxMjIxMzc0MDQ3IDEwNy4xMiIgc3R5bGU9Im1heC1oZWlnaHQ6IDUwMHB4IiB3aWR0aD0iNTU1LjY2NDEyMjEzNzQwNDciIGhlaWdodD0iMTA3LjEyIj4KPHBhdGggZmlsbD0iIzBGMDIyRCIgZD0iTTE4MyAzODcuMDYyVjM4MC4wNDNIMjMyLjAwOVYzODcuMDYySDIxMS40NjFWNDQ1LjM4OEgyMDMuNTQ4VjM4Ny4wNjJIMTgzWiIvPgo8cGF0aCBmaWxsPSIjMEYwMjJEIiBkPSJNMjM4LjExMSA0NDUuMzg4VjM5Ni4zNzlIMjQ1LjM4NlY0MDMuNzgySDI0NS44OTZDMjQ2Ljc5IDQwMS4zNTcgMjQ4LjQwNyAzOTkuMzg5IDI1MC43NDYgMzk3Ljg3OUMyNTMuMDg2IDM5Ni4zNjkgMjU1LjcyNCAzOTUuNjE0IDI1OC42NTkgMzk1LjYxNEMyNTkuMjEyIDM5NS42MTQgMjU5LjkwNCAzOTUuNjI0IDI2MC43MzMgMzk1LjY0NUMyNjEuNTYzIDM5NS42NjcgMjYyLjE5IDM5NS42OTkgMjYyLjYxNiAzOTUuNzQxVjQwMy4zOTlDMjYyLjM2IDQwMy4zMzUgMjYxLjc3NiA0MDMuMjM5IDI2MC44NjEgNDAzLjExMkMyNTkuOTY3IDQwMi45NjMgMjU5LjAyMSA0MDIuODg4IDI1OC4wMjEgNDAyLjg4OEMyNTUuNjM5IDQwMi44ODggMjUzLjUxMiA0MDMuMzg4IDI1MS42NCA0MDQuMzg4QzI0OS43ODkgNDA1LjM2NiAyNDguMzIxIDQwNi43MjggMjQ3LjIzNyA0MDguNDcyQzI0Ni4xNzMgNDEwLjE5NSAyNDUuNjQxIDQxMi4xNjMgMjQ1LjY0MSA0MTQuMzc1VjQ0NS4zODhIMjM4LjExMVoiLz4KPHBhdGggZmlsbD0iIzBGMDIyRCIgZD0iTTI4NS45NjQgNDQ2LjUzN0MyODIuODU4IDQ0Ni41MzcgMjgwLjA0IDQ0NS45NTIgMjc3LjUwOCA0NDQuNzgyQzI3NC45NzcgNDQzLjU5MSAyNzIuOTY3IDQ0MS44NzkgMjcxLjQ3OCA0MzkuNjQ1QzI2OS45ODkgNDM3LjM5IDI2OS4yNDQgNDM0LjY2OCAyNjkuMjQ0IDQzMS40NzdDMjY5LjI0NCA0MjguNjY5IDI2OS43OTcgNDI2LjM5MyAyNzAuOTA0IDQyNC42NDlDMjcyLjAxIDQyMi44ODMgMjczLjQ4OCA0MjEuNTAxIDI3NS4zMzkgNDIwLjUwMUMyNzcuMTg5IDQxOS41MDEgMjc5LjIzMSA0MTguNzU3IDI4MS40NjUgNDE4LjI2N0MyODMuNzE5IDQxNy43NTcgMjg1Ljk4NSA0MTcuMzUzIDI4OC4yNjEgNDE3LjA1NUMyOTEuMjM5IDQxNi42NzIgMjkzLjY1MyA0MTYuMzg1IDI5NS41MDQgNDE2LjE5M0MyOTcuMzc2IDQxNS45ODEgMjk4LjczNyA0MTUuNjMgMjk5LjU4OCA0MTUuMTQxQzMwMC40NiA0MTQuNjUxIDMwMC44OTYgNDEzLjggMzAwLjg5NiA0MTIuNTg4VjQxMi4zMzNDMzAwLjg5NiA0MDkuMTg1IDMwMC4wMzUgNDA2LjczOCAyOTguMzEyIDQwNC45OTRDMjk2LjYxIDQwMy4yNSAyOTQuMDI1IDQwMi4zNzggMjkwLjU1OCA0MDIuMzc4QzI4Ni45NjMgNDAyLjM3OCAyODQuMTQ1IDQwMy4xNjUgMjgyLjEwMyA0MDQuNzM5QzI4MC4wNjEgNDA2LjMxMyAyNzguNjI1IDQwNy45OTMgMjc3Ljc5NSA0MDkuNzhMMjcwLjY0OCA0MDcuMjI4QzI3MS45MjUgNDA0LjI1IDI3My42MjYgNDAxLjkzMSAyNzUuNzUzIDQwMC4yNzJDMjc3LjkwMiAzOTguNTkyIDI4MC4yNDIgMzk3LjQyMiAyODIuNzczIDM5Ni43NjJDMjg1LjMyNSAzOTYuMDgyIDI4Ny44MzUgMzk1Ljc0MSAyOTAuMzAzIDM5NS43NDFDMjkxLjg3NyAzOTUuNzQxIDI5My42ODUgMzk1LjkzMyAyOTUuNzI3IDM5Ni4zMTVDMjk3Ljc5IDM5Ni42NzcgMjk5Ljc3OSAzOTcuNDMyIDMwMS42OTQgMzk4LjU4MUMzMDMuNjI5IDM5OS43MyAzMDUuMjM1IDQwMS40NjMgMzA2LjUxMiA0MDMuNzgyQzMwNy43ODggNDA2LjEgMzA4LjQyNiA0MDkuMjA2IDMwOC40MjYgNDEzLjA5OVY0NDUuMzg4SDMwMC44OTZWNDM4Ljc1MkgzMDAuNTEzQzMwMC4wMDMgNDM5LjgxNSAyOTkuMTUyIDQ0MC45NTMgMjk3Ljk2MSA0NDIuMTY2QzI5Ni43NjkgNDQzLjM3OCAyOTUuMTg1IDQ0NC40MSAyOTMuMjA2IDQ0NS4yNjFDMjkxLjIyOCA0NDYuMTEyIDI4OC44MTQgNDQ2LjUzNyAyODUuOTY0IDQ0Ni41MzdaTTI4Ny4xMTIgNDM5Ljc3M0MyOTAuMDkgNDM5Ljc3MyAyOTIuNiA0MzkuMTg4IDI5NC42NDIgNDM4LjAxOEMyOTYuNzA2IDQzNi44NDggMjk4LjI1OCA0MzUuMzM4IDI5OS4zMDEgNDMzLjQ4N0MzMDAuMzY0IDQzMS42MzYgMzAwLjg5NiA0MjkuNjkgMzAwLjg5NiA0MjcuNjQ4VjQyMC43NTZDMzAwLjU3NyA0MjEuMTM5IDI5OS44NzUgNDIxLjQ5IDI5OC43OSA0MjEuODA5QzI5Ny43MjcgNDIyLjEwNyAyOTYuNDkzIDQyMi4zNzMgMjk1LjA4OSA0MjIuNjA3QzI5My43MDYgNDIyLjgxOSAyOTIuMzU2IDQyMy4wMTEgMjkxLjAzNyA0MjMuMTgxQzI4OS43MzkgNDIzLjMzIDI4OC42ODYgNDIzLjQ1OCAyODcuODc4IDQyMy41NjRDMjg1LjkyMSA0MjMuODE5IDI4NC4wOTIgNDI0LjIzNCAyODIuMzkgNDI0LjgwOEMyODAuNzEgNDI1LjM2MSAyNzkuMzQ4IDQyNi4yMDIgMjc4LjMwNiA0MjcuMzI5QzI3Ny4yODUgNDI4LjQzNSAyNzYuNzc0IDQyOS45NDUgMjc2Ljc3NCA0MzEuODZDMjc2Ljc3NCA0MzQuNDc2IDI3Ny43NDIgNDM2LjQ1NCAyNzkuNjc4IDQzNy43OTRDMjgxLjYzNSA0MzkuMTEzIDI4NC4xMTMgNDM5Ljc3MyAyODcuMTEyIDQzOS43NzNaIi8+CjxwYXRoIGZpbGw9IiMwRjAyMkQiIGQ9Ik0zNjAuNDkgMzk2LjM3OUwzNDIuMzY3IDQ0NS4zODhIMzM0LjcwOUwzMTYuNTg2IDM5Ni4zNzlIMzI0Ljc1NEwzMzguMjgzIDQzNS40MzNIMzM4Ljc5M0wzNTIuMzIyIDM5Ni4zNzlIMzYwLjQ5WiIvPgo8cGF0aCBmaWxsPSIjMEYwMjJEIiBkPSJNMzg5LjIyMiA0NDYuNDA5QzM4NC41IDQ0Ni40MDkgMzgwLjQyNyA0NDUuMzY3IDM3Ny4wMDIgNDQzLjI4MkMzNzMuNTk5IDQ0MS4xNzcgMzcwLjk3MiA0MzguMjQxIDM2OS4xMjEgNDM0LjQ3NkMzNjcuMjkyIDQzMC42OSAzNjYuMzc3IDQyNi4yODcgMzY2LjM3NyA0MjEuMjY3QzM2Ni4zNzcgNDE2LjI0NyAzNjcuMjkyIDQxMS44MjIgMzY5LjEyMSA0MDcuOTkzQzM3MC45NzIgNDA0LjE0MyAzNzMuNTQ1IDQwMS4xNDQgMzc2Ljg0MiAzOTguOTk2QzM4MC4xNjEgMzk2LjgyNiAzODQuMDMyIDM5NS43NDEgMzg4LjQ1NyAzOTUuNzQxQzM5MS4wMDkgMzk1Ljc0MSAzOTMuNTMgMzk2LjE2NyAzOTYuMDE5IDM5Ny4wMTdDMzk4LjUwNyAzOTcuODY4IDQwMC43NzMgMzk5LjI1MSA0MDIuODE1IDQwMS4xNjVDNDA0Ljg1NyA0MDMuMDU4IDQwNi40ODQgNDA1LjU2OCA0MDcuNjk2IDQwOC42OTVDNDA4LjkwOSA0MTEuODIyIDQwOS41MTUgNDE1LjY3MiA0MDkuNTE1IDQyMC4yNDZWNDIzLjQzNkgzNzEuNzM3VjQxNi45MjdINDAxLjg1N0M0MDEuODU3IDQxNC4xNjIgNDAxLjMwNCA0MTEuNjk1IDQwMC4xOTggNDA5LjUyNUMzOTkuMTEzIDQwNy4zNTUgMzk3LjU2MSA0MDUuNjQzIDM5NS41NCA0MDQuMzg4QzM5My41NCA0MDMuMTMzIDM5MS4xNzkgNDAyLjUwNSAzODguNDU3IDQwMi41MDVDMzg1LjQ1NyA0MDIuNTA1IDM4Mi44NjIgNDAzLjI1IDM4MC42NzEgNDA0LjczOUMzNzguNTAyIDQwNi4yMDcgMzc2LjgzMiA0MDguMTIxIDM3NS42NjIgNDEwLjQ4MkMzNzQuNDkyIDQxMi44NDMgMzczLjkwNyA0MTUuMzc1IDM3My45MDcgNDE4LjA3NlY0MjIuNDE1QzM3My45MDcgNDI2LjExNyAzNzQuNTQ1IDQyOS4yNTQgMzc1LjgyMSA0MzEuODI4QzM3Ny4xMTkgNDM0LjM4IDM3OC45MTYgNDM2LjMyNyAzODEuMjE0IDQzNy42NjdDMzgzLjUxMSA0MzguOTg2IDM4Ni4xODEgNDM5LjY0NSAzODkuMjIyIDQzOS42NDVDMzkxLjIwMSA0MzkuNjQ1IDM5Mi45ODcgNDM5LjM2OSAzOTQuNTgzIDQzOC44MTVDMzk2LjE5OSA0MzguMjQxIDM5Ny41OTMgNDM3LjM5IDM5OC43NjIgNDM2LjI2M0MzOTkuOTMyIDQzNS4xMTQgNDAwLjgzNiA0MzMuNjg5IDQwMS40NzUgNDMxLjk4N0w0MDguNzQ5IDQzNC4wMjlDNDA3Ljk4NCA0MzYuNDk3IDQwNi42OTcgNDM4LjY2NyA0MDQuODg5IDQ0MC41MzhDNDAzLjA4MSA0NDIuMzg5IDQwMC44NDcgNDQzLjgzNiAzOTguMTg4IDQ0NC44NzhDMzk1LjUyOSA0NDUuODk5IDM5Mi41NDEgNDQ2LjQwOSAzODkuMjIyIDQ0Ni40MDlaIi8+CjxwYXRoIGZpbGw9IiMwRjAyMkQiIGQ9Ik00MjguNSAzODAuMDQzVjQ0NS4zODhINDIwLjk3VjM4MC4wNDNINDI4LjVaIi8+CjxwYXRoIGZpbGw9IiMwRjAyMkQiIGQ9Ik00NDAuNzE5IDQ0NC4yMzlWMzc4Ljg5M0g0NjUuNzM0QzQ3MC40NTYgMzc4Ljg5MyA0NzQuMzggMzc5LjYzOCA0NzcuNTA3IDM4MS4xMjdDNDgwLjY1NSAzODIuNTk1IDQ4My4wMDYgMzg0LjYwNSA0ODQuNTU5IDM4Ny4xNTdDNDg2LjEzMyAzODkuNzEgNDg2LjkyIDM5Mi42MDMgNDg2LjkyIDM5NS44MzZDNDg2LjkyIDM5OC40OTUgNDg2LjQwOSA0MDAuNzcxIDQ4NS4zODggNDAyLjY2NEM0ODQuMzY3IDQwNC41MzYgNDgyLjk5NSA0MDYuMDU3IDQ4MS4yNzIgNDA3LjIyN0M0NzkuNTQ5IDQwOC4zOTcgNDc3LjYyNCA0MDkuMjM3IDQ3NS40OTcgNDA5Ljc0N1Y0MTAuMzg2QzQ3Ny44MTYgNDEwLjUxMyA0ODAuMDM4IDQxMS4yMjYgNDgyLjE2NiA0MTIuNTIzQzQ4NC4zMTQgNDEzLjggNDg2LjA2OSA0MTUuNjA4IDQ4Ny40MyA0MTcuOTQ3QzQ4OC43OTIgNDIwLjI4NyA0ODkuNDcyIDQyMy4xMTYgNDg5LjQ3MiA0MjYuNDM1QzQ4OS40NzIgNDI5LjgxNyA0ODguNjUzIDQzMi44NTkgNDg3LjAxNSA0MzUuNTZDNDg1LjM3OCA0MzguMjQgNDgyLjkxIDQ0MC4zNTcgNDc5LjYxMyA0NDEuOTFDNDc2LjMxNiA0NDMuNDYyIDQ3Mi4xNjggNDQ0LjIzOSA0NjcuMTY5IDQ0NC4yMzlINDQwLjcxOVpNNDUyLjU1NiA0MzQuMzQ4SDQ2NS4yODdDNDY5LjU4NCA0MzQuMzQ4IDQ3Mi42NzkgNDMzLjUyOSA0NzQuNTcyIDQzMS44OTFDNDc2LjQ4NiA0MzAuMjMyIDQ3Ny40NDMgNDI4LjEwNCA0NzcuNDQzIDQyNS41MDlDNDc3LjQ0MyA0MjMuNTc0IDQ3Ni45NjUgNDIxLjgyOSA0NzYuMDA4IDQyMC4yNzdDNDc1LjA1IDQxOC43MDMgNDczLjY4OSA0MTcuNDY5IDQ3MS45MjMgNDE2LjU3NUM0NzAuMTU4IDQxNS42NjEgNDY4LjA1MiA0MTUuMjAzIDQ2NS42MDYgNDE1LjIwM0g0NTIuNTU2VjQzNC4zNDhaTTQ1Mi41NTYgNDA2LjY4NEg0NjQuMjY2QzQ2Ni4zMDggNDA2LjY4NCA0NjguMTQ4IDQwNi4zMTIgNDY5Ljc4NiA0MDUuNTY4QzQ3MS40MjQgNDA0LjgwMiA0NzIuNzEgNDAzLjcyOCA0NzMuNjQ2IDQwMi4zNDVDNDc0LjYwNCA0MDAuOTQxIDQ3NS4wODIgMzk5LjI4MiA0NzUuMDgyIDM5Ny4zNjdDNDc1LjA4MiAzOTQuODM2IDQ3NC4xODkgMzkyLjc1MiA0NzIuNDAyIDM5MS4xMTRDNDcwLjYzNyAzODkuNDc2IDQ2OC4wMSAzODguNjU3IDQ2NC41MjEgMzg4LjY1N0g0NTIuNTU2VjQwNi42ODRaIi8+CjxwYXRoIGZpbGw9IiMwRjAyMkQiIGQ9Ik01MDguMTYyIDQ0NC4yMzlINDk1LjUyN0w1MTguNTMxIDM3OC44OTNINTMzLjE0NUw1NTYuMTgyIDQ0NC4yMzlINTQzLjU0Nkw1MjYuMDkzIDM5Mi4yOTRINTI1LjU4M0w1MDguMTYyIDQ0NC4yMzlaIi8+CjxwYXRoIGZpbGw9IiMwRjAyMkQiIGQ9Ik02MTcuNjUgNDAwLjk0MUg2MDUuNzE3QzYwNS4zNzcgMzk4Ljk4NCA2MDQuNzQ5IDM5Ny4yNTEgNjAzLjgzNSAzOTUuNzRDNjAyLjkyIDM5NC4yMDkgNjAxLjc4MiAzOTIuOTExIDYwMC40MjEgMzkxLjg0OEM1OTkuMDU5IDM5MC43ODQgNTk3LjUwNiAzODkuOTg2IDU5NS43NjIgMzg5LjQ1NUM1OTQuMDM5IDM4OC45MDIgNTkyLjE3OCAzODguNjI1IDU5MC4xNzggMzg4LjYyNUM1ODYuNjI2IDM4OC42MjUgNTgzLjQ3OCAzODkuNTE4IDU4MC43MzQgMzkxLjMwNUM1NzcuOTkgMzkzLjA3MSA1NzUuODQyIDM5NS42NjYgNTc0LjI4OSAzOTkuMDlDNTcyLjczNiA0MDIuNDk0IDU3MS45NiA0MDYuNjUyIDU3MS45NiA0MTEuNTY2QzU3MS45NiA0MTYuNTY1IDU3Mi43MzYgNDIwLjc3NyA1NzQuMjg5IDQyNC4yMDFDNTc1Ljg2MyA0MjcuNjA1IDU3OC4wMTEgNDMwLjE3OCA1ODAuNzM0IDQzMS45MjNDNTgzLjQ3OCA0MzMuNjQ2IDU4Ni42MTUgNDM0LjUwNyA1OTAuMTQ3IDQzNC41MDdDNTkyLjEwMyA0MzQuNTA3IDU5My45MzMgNDM0LjI1MiA1OTUuNjM1IDQzMy43NDFDNTk3LjM1NyA0MzMuMjEgNTk4LjkgNDMyLjQzMyA2MDAuMjYxIDQzMS40MTJDNjAxLjY0NCA0MzAuMzkxIDYwMi44MDMgNDI5LjEzNiA2MDMuNzM5IDQyNy42NDdDNjA0LjY5NiA0MjYuMTU4IDYwNS4zNTUgNDI0LjQ1NiA2MDUuNzE3IDQyMi41NDJMNjE3LjY1IDQyMi42MDZDNjE3LjIwNCA0MjUuNzExIDYxNi4yMzYgNDI4LjYyNiA2MTQuNzQ3IDQzMS4zNDhDNjEzLjI3OSA0MzQuMDcxIDYxMS4zNTQgNDM2LjQ3NSA2MDguOTcyIDQzOC41NTlDNjA2LjU4OSA0NDAuNjIzIDYwMy44MDMgNDQyLjIzOSA2MDAuNjEyIDQ0My40MDlDNTk3LjQyMSA0NDQuNTU4IDU5My44OCA0NDUuMTMyIDU4OS45ODcgNDQ1LjEzMkM1ODQuMjQ0IDQ0NS4xMzIgNTc5LjExNyA0NDMuODAzIDU3NC42MDggNDQxLjE0NEM1NzAuMDk4IDQzOC40ODUgNTY2LjU0NiA0MzQuNjQ1IDU2My45NTEgNDI5LjYyNUM1NjEuMzU2IDQyNC42MDUgNTYwLjA1OCA0MTguNTg2IDU2MC4wNTggNDExLjU2NkM1NjAuMDU4IDQwNC41MjUgNTYxLjM2NyAzOTguNTA2IDU2My45ODMgMzkzLjUwN0M1NjYuNTk5IDM4OC40ODcgNTcwLjE2MiAzODQuNjQ3IDU3NC42NzIgMzgxLjk4OEM1NzkuMTgxIDM3OS4zMjkgNTg0LjI4NiAzNzggNTg5Ljk4NyAzNzhDNTkzLjYyNCAzNzggNTk3LjAwNyAzNzguNTExIDYwMC4xMzMgMzc5LjUzMkM2MDMuMjYgMzgwLjU1MyA2MDYuMDQ3IDM4Mi4wNTIgNjA4LjQ5MyAzODQuMDNDNjEwLjkzOSAzODUuOTg3IDYxMi45NDkgMzg4LjM5MSA2MTQuNTIzIDM5MS4yNDFDNjE2LjExOSAzOTQuMDcgNjE3LjE2MSAzOTcuMzA0IDYxNy42NSA0MDAuOTQxWiIvPgo8cGF0aCBmaWxsPSIjMEYwMjJEIiBkPSJNNjI4LjQ5MSA0NDQuMjM5VjM3OC44OTNINjQwLjMyOFY0MDguOTE4SDY0MS4xMjZMNjY2LjYxOSAzNzguODkzSDY4MS4wNzNMNjU1LjgwMyA0MDguMjE2TDY4MS4yOTcgNDQ0LjIzOUg2NjcuMDY2TDY0Ny41NzEgNDE2LjIyNEw2NDAuMzI4IDQyNC43NzZWNDQ0LjIzOUg2MjguNDkxWiIvPgo8cGF0aCBmaWxsPSIjMEYwMjJEIiBkPSJNNTA4LjE2MiA0NDQuMjM4SDQ5NS41MjdMNTE4LjUzMSAzNzguODkzSDUzMy4xNDVMNTU2LjE4MiA0NDQuMjM4SDU0My41NDdMNTI2LjA5MyAzOTIuMjkzSDUyNS41ODNMNTA4LjE2MiA0NDQuMjM4WiIvPgo8cGF0aCBmaWxsPSIjMEYwMjJEIiBkPSJNNTI2LjA4MSA0MjcuODM0TDUzOS40NTEgNDQ0LjIzOEg1MTIuNTMxTDUyNi4wODEgNDI3LjgzNFoiLz4KPHBhdGggZmlsbD0iIzBGMDIyRCIgZD0iTTI1MC4zMDcgNDc4LjA4QzI1MC4wODcgNDc3LjM5IDI0OS43OTIgNDc2Ljc3MyAyNDkuNDIgNDc2LjIyN0MyNDkuMDU3IDQ3NS42NzQgMjQ4LjYyMSA0NzUuMjA1IDI0OC4xMTQgNDc0LjgxOEMyNDcuNjA2IDQ3NC40MjQgMjQ3LjAyNyA0NzQuMTI1IDI0Ni4zNzUgNDczLjkyQzI0NS43MzEgNDczLjcxNiAyNDUuMDIzIDQ3My42MTQgMjQ0LjI1IDQ3My42MTRDMjQyLjkzOSA0NzMuNjE0IDI0MS43NTggNDczLjk1MSAyNDAuNzA1IDQ3NC42MjVDMjM5LjY1MiA0NzUuMjk5IDIzOC44MTggNDc2LjI4OCAyMzguMjA1IDQ3Ny41OTFDMjM3LjU5OCA0NzguODg2IDIzNy4yOTUgNDgwLjQ3MyAyMzcuMjk1IDQ4Mi4zNTJDMjM3LjI5NSA0ODQuMjM5IDIzNy42MDIgNDg1LjgzMyAyMzguMjE2IDQ4Ny4xMzZDMjM4LjgzIDQ4OC40MzkgMjM5LjY3IDQ4OS40MjggMjQwLjczOSA0OTAuMTAyQzI0MS44MDcgNDkwLjc3NyAyNDMuMDIzIDQ5MS4xMTQgMjQ0LjM4NiA0OTEuMTE0QzI0NS42NTIgNDkxLjExNCAyNDYuNzU0IDQ5MC44NTYgMjQ3LjY5MyA0OTAuMzQxQzI0OC42NCA0ODkuODI2IDI0OS4zNzEgNDg5LjA5OCAyNDkuODg2IDQ4OC4xNTlDMjUwLjQwOSA0ODcuMjEyIDI1MC42NyA0ODYuMDk4IDI1MC42NyA0ODQuODE4TDI1MS41OCA0ODQuOTg5SDI0NC45MlY0ODIuMDkxSDI1NC4wNjhWNDg0LjczOUMyNTQuMDY4IDQ4Ni42OTMgMjUzLjY1MiA0ODguMzkgMjUyLjgxOCA0ODkuODNDMjUxLjk5MiA0OTEuMjYxIDI1MC44NDggNDkyLjM2NyAyNDkuMzg2IDQ5My4xNDhDMjQ3LjkzMiA0OTMuOTI4IDI0Ni4yNjUgNDk0LjMxOCAyNDQuMzg2IDQ5NC4zMThDMjQyLjI4IDQ5NC4zMTggMjQwLjQzMiA0OTMuODMzIDIzOC44NDEgNDkyLjg2NEMyMzcuMjU4IDQ5MS44OTQgMjM2LjAyMyA0OTAuNTE5IDIzNS4xMzYgNDg4LjczOUMyMzQuMjUgNDg2Ljk1MSAyMzMuODA3IDQ4NC44MyAyMzMuODA3IDQ4Mi4zNzVDMjMzLjgwNyA0ODAuNTE5IDIzNC4wNjQgNDc4Ljg1MiAyMzQuNTggNDc3LjM3NUMyMzUuMDk1IDQ3NS44OTggMjM1LjgxOCA0NzQuNjQ0IDIzNi43NSA0NzMuNjE0QzIzNy42ODkgNDcyLjU3NiAyMzguNzkyIDQ3MS43ODQgMjQwLjA1NyA0NzEuMjM5QzI0MS4zMyA0NzAuNjg2IDI0Mi43MiA0NzAuNDA5IDI0NC4yMjcgNDcwLjQwOUMyNDUuNDg1IDQ3MC40MDkgMjQ2LjY1NSA0NzAuNTk1IDI0Ny43MzkgNDcwLjk2NkMyNDguODMgNDcxLjMzNyAyNDkuNzk5IDQ3MS44NjQgMjUwLjY0OCA0NzIuNTQ1QzI1MS41MDQgNDczLjIyNyAyNTIuMjEyIDQ3NC4wMzggMjUyLjc3MyA0NzQuOTc3QzI1My4zMzMgNDc1LjkwOSAyNTMuNzEyIDQ3Ni45NDMgMjUzLjkwOSA0NzguMDhIMjUwLjMwN1pNMjY1Ljc3NiA0OTQuMzUyQzI2NC4wNTYgNDk0LjM1MiAyNjIuNTc1IDQ5My45ODUgMjYxLjMzMiA0OTMuMjVDMjYwLjA5OCA0OTIuNTA4IDI1OS4xNDMgNDkxLjQ2NiAyNTguNDY5IDQ5MC4xMjVDMjU3LjgwMiA0ODguNzc3IDI1Ny40NjkgNDg3LjE5NyAyNTcuNDY5IDQ4NS4zODZDMjU3LjQ2OSA0ODMuNTk4IDI1Ny44MDIgNDgyLjAyMyAyNTguNDY5IDQ4MC42NTlDMjU5LjE0MyA0NzkuMjk1IDI2MC4wODIgNDc4LjIzMSAyNjEuMjg3IDQ3Ny40NjZDMjYyLjQ5OSA0NzYuNzAxIDI2My45MTYgNDc2LjMxOCAyNjUuNTM3IDQ3Ni4zMThDMjY2LjUyMiA0NzYuMzE4IDI2Ny40NzYgNDc2LjQ4MSAyNjguNDAxIDQ3Ni44MDdDMjY5LjMyNSA0NzcuMTMzIDI3MC4xNTQgNDc3LjY0NCAyNzAuODg5IDQ3OC4zNDFDMjcxLjYyNCA0NzkuMDM4IDI3Mi4yMDQgNDc5Ljk0MyAyNzIuNjI4IDQ4MS4wNTdDMjczLjA1MiA0ODIuMTYzIDI3My4yNjQgNDgzLjUwOCAyNzMuMjY0IDQ4NS4wOTFWNDg2LjI5NUgyNTkuMzg5VjQ4My43NUgyNjkuOTM1QzI2OS45MzUgNDgyLjg1NiAyNjkuNzUzIDQ4Mi4wNjQgMjY5LjM4OSA0ODEuMzc1QzI2OS4wMjYgNDgwLjY3OCAyNjguNTE0IDQ4MC4xMjkgMjY3Ljg1NSA0NzkuNzI3QzI2Ny4yMDQgNDc5LjMyNiAyNjYuNDM4IDQ3OS4xMjUgMjY1LjU2IDQ3OS4xMjVDMjY0LjYwNSA0NzkuMTI1IDI2My43NzIgNDc5LjM2IDI2My4wNiA0NzkuODNDMjYyLjM1NSA0ODAuMjkyIDI2MS44MSA0ODAuODk4IDI2MS40MjMgNDgxLjY0OEMyNjEuMDQ1IDQ4Mi4zOSAyNjAuODU1IDQ4My4xOTcgMjYwLjg1NSA0ODQuMDY4VjQ4Ni4wNTdDMjYwLjg1NSA0ODcuMjIzIDI2MS4wNiA0ODguMjE2IDI2MS40NjkgNDg5LjAzNEMyNjEuODg1IDQ4OS44NTIgMjYyLjQ2NSA0OTAuNDc3IDI2My4yMDcgNDkwLjkwOUMyNjMuOTUgNDkxLjMzMyAyNjQuODE3IDQ5MS41NDUgMjY1LjgxIDQ5MS41NDVDMjY2LjQ1NCA0OTEuNTQ1IDI2Ny4wNDEgNDkxLjQ1NSAyNjcuNTcxIDQ5MS4yNzNDMjY4LjEwMSA0OTEuMDgzIDI2OC41NiA0OTAuODAzIDI2OC45NDYgNDkwLjQzMkMyNjkuMzMyIDQ5MC4wNjEgMjY5LjYyOCA0ODkuNjAyIDI2OS44MzIgNDg5LjA1N0wyNzMuMDQ4IDQ4OS42MzZDMjcyLjc5MSA0OTAuNTgzIDI3Mi4zMjkgNDkxLjQxMyAyNzEuNjYyIDQ5Mi4xMjVDMjcxLjAwMyA0OTIuODMgMjcwLjE3MyA0OTMuMzc5IDI2OS4xNzMgNDkzLjc3M0MyNjguMTgxIDQ5NC4xNTkgMjY3LjA0OCA0OTQuMzUyIDI2NS43NzYgNDk0LjM1MlpNMjg1LjE4MiA0NzYuNTQ1VjQ3OS4yNzNIMjc1LjY0OFY0NzYuNTQ1SDI4NS4xODJaTTI3OC4yMDUgNDcyLjM2NEgyODEuNjAyVjQ4OC44NzVDMjgxLjYwMiA0ODkuNTM0IDI4MS43MDEgNDkwLjAzIDI4MS44OTggNDkwLjM2NEMyODIuMDk1IDQ5MC42ODkgMjgyLjM0OCA0OTAuOTEzIDI4Mi42NTkgNDkxLjAzNEMyODIuOTc3IDQ5MS4xNDggMjgzLjMyMiA0OTEuMjA1IDI4My42OTMgNDkxLjIwNUMyODMuOTY2IDQ5MS4yMDUgMjg0LjIwNSA0OTEuMTg2IDI4NC40MDkgNDkxLjE0OEMyODQuNjE0IDQ5MS4xMSAyODQuNzczIDQ5MS4wOCAyODQuODg2IDQ5MS4wNTdMMjg1LjUgNDkzLjg2NEMyODUuMzAzIDQ5My45MzkgMjg1LjAyMyA0OTQuMDE1IDI4NC42NTkgNDk0LjA5MUMyODQuMjk1IDQ5NC4xNzQgMjgzLjg0MSA0OTQuMjIgMjgzLjI5NSA0OTQuMjI3QzI4Mi40MDIgNDk0LjI0MiAyODEuNTY4IDQ5NC4wODMgMjgwLjc5NSA0OTMuNzVDMjgwLjAyMyA0OTMuNDE3IDI3OS4zOTggNDkyLjkwMiAyNzguOTIgNDkyLjIwNUMyNzguNDQzIDQ5MS41MDggMjc4LjIwNSA0OTAuNjMzIDI3OC4yMDUgNDg5LjU4VjQ3Mi4zNjRaTTI5Ny42ODIgNDk0VjQ3MC43MjdIMzA2LjIwNUMzMDcuODU2IDQ3MC43MjcgMzA5LjIyMyA0NzEgMzEwLjMwNyA0NzEuNTQ1QzMxMS4zOSA0NzIuMDgzIDMxMi4yMDEgNDcyLjgxNCAzMTIuNzM5IDQ3My43MzlDMzEzLjI3NyA0NzQuNjU1IDMxMy41NDUgNDc1LjY4OSAzMTMuNTQ1IDQ3Ni44NDFDMzEzLjU0NSA0NzcuODExIDMxMy4zNjcgNDc4LjYyOSAzMTMuMDExIDQ3OS4yOTVDMzEyLjY1NSA0NzkuOTU1IDMxMi4xNzggNDgwLjQ4NSAzMTEuNTggNDgwLjg4NkMzMTAuOTg5IDQ4MS4yOCAzMTAuMzM3IDQ4MS41NjggMzA5LjYyNSA0ODEuNzVWNDgxLjk3N0MzMTAuMzk4IDQ4Mi4wMTUgMzExLjE1MiA0ODIuMjY1IDMxMS44ODYgNDgyLjcyN0MzMTIuNjI5IDQ4My4xODIgMzEzLjI0MiA0ODMuODMgMzEzLjcyNyA0ODQuNjdDMzE0LjIxMiA0ODUuNTExIDMxNC40NTUgNDg2LjUzNCAzMTQuNDU1IDQ4Ny43MzlDMzE0LjQ1NSA0ODguOTI4IDMxNC4xNzQgNDg5Ljk5NiAzMTMuNjE0IDQ5MC45NDNDMzEzLjA2MSA0OTEuODgzIDMxMi4yMDUgNDkyLjYyOSAzMTEuMDQ1IDQ5My4xODJDMzA5Ljg4NiA0OTMuNzI3IDMwOC40MDUgNDk0IDMwNi42MDIgNDk0SDI5Ny42ODJaTTMwMS4xOTMgNDkwLjk4OUgzMDYuMjYxQzMwNy45NDMgNDkwLjk4OSAzMDkuMTQ4IDQ5MC42NjMgMzA5Ljg3NSA0OTAuMDExQzMxMC42MDIgNDg5LjM2IDMxMC45NjYgNDg4LjU0NSAzMTAuOTY2IDQ4Ny41NjhDMzEwLjk2NiA0ODYuODMzIDMxMC43OCA0ODYuMTU5IDMxMC40MDkgNDg1LjU0NUMzMTAuMDM4IDQ4NC45MzIgMzA5LjUwOCA0ODQuNDQzIDMwOC44MTggNDg0LjA4QzMwOC4xMzYgNDgzLjcxNiAzMDcuMzI2IDQ4My41MzQgMzA2LjM4NiA0ODMuNTM0SDMwMS4xOTNWNDkwLjk4OVpNMzAxLjE5MyA0ODAuNzk1SDMwNS44OThDMzA2LjY4NiA0ODAuNzk1IDMwNy4zOTQgNDgwLjY0NCAzMDguMDIzIDQ4MC4zNDFDMzA4LjY1OSA0ODAuMDM4IDMwOS4xNjMgNDc5LjYxNCAzMDkuNTM0IDQ3OS4wNjhDMzA5LjkxMyA0NzguNTE1IDMxMC4xMDIgNDc3Ljg2NCAzMTAuMTAyIDQ3Ny4xMTRDMzEwLjEwMiA0NzYuMTUyIDMwOS43NjUgNDc1LjM0NSAzMDkuMDkxIDQ3NC42OTNDMzA4LjQxNyA0NzQuMDQyIDMwNy4zODMgNDczLjcxNiAzMDUuOTg5IDQ3My43MTZIMzAxLjE5M1Y0ODAuNzk1Wk0zMjAuNTg1IDQ5NEgzMTYuODU4TDMyNS4yMzMgNDcwLjcyN0gzMjkuMjlMMzM3LjY2NSA0OTRIMzMzLjkzOEwzMjcuMzU4IDQ3NC45NTVIMzI3LjE3NkwzMjAuNTg1IDQ5NFpNMzIxLjIxIDQ4NC44ODZIMzMzLjMwMVY0ODcuODQxSDMyMS4yMVY0ODQuODg2Wk0zNTkuMjYxIDQ3OC4yOTVIMzU1LjcxNkMzNTUuNTggNDc3LjUzOCAzNTUuMzI2IDQ3Ni44NzEgMzU0Ljk1NSA0NzYuMjk1QzM1NC41ODMgNDc1LjcyIDM1NC4xMjkgNDc1LjIzMSAzNTMuNTkxIDQ3NC44M0MzNTMuMDUzIDQ3NC40MjggMzUyLjQ1MSA0NzQuMTI1IDM1MS43ODQgNDczLjkyQzM1MS4xMjUgNDczLjcxNiAzNTAuNDI0IDQ3My42MTQgMzQ5LjY4MiA0NzMuNjE0QzM0OC4zNDEgNDczLjYxNCAzNDcuMTQgNDczLjk1MSAzNDYuMDggNDc0LjYyNUMzNDUuMDI3IDQ3NS4yOTkgMzQ0LjE5MyA0NzYuMjg4IDM0My41OCA0NzcuNTkxQzM0Mi45NzMgNDc4Ljg5NCAzNDIuNjcgNDgwLjQ4NSAzNDIuNjcgNDgyLjM2NEMzNDIuNjcgNDg0LjI1OCAzNDIuOTczIDQ4NS44NTYgMzQzLjU4IDQ4Ny4xNTlDMzQ0LjE5MyA0ODguNDYyIDM0NS4wMyA0ODkuNDQ3IDM0Ni4wOTEgNDkwLjExNEMzNDcuMTUyIDQ5MC43OCAzNDguMzQ1IDQ5MS4xMTQgMzQ5LjY3IDQ5MS4xMTRDMzUwLjQwNSA0OTEuMTE0IDM1MS4xMDIgNDkxLjAxNSAzNTEuNzYxIDQ5MC44MThDMzUyLjQyOCA0OTAuNjE0IDM1My4wMyA0OTAuMzE0IDM1My41NjggNDg5LjkyQzM1NC4xMDYgNDg5LjUyNyAzNTQuNTYxIDQ4OS4wNDUgMzU0LjkzMiA0ODguNDc3QzM1NS4zMTEgNDg3LjkwMiAzNTUuNTcyIDQ4Ny4yNDIgMzU1LjcxNiA0ODYuNUwzNTkuMjYxIDQ4Ni41MTFDMzU5LjA3MiA0ODcuNjU1IDM1OC43MDUgNDg4LjcwOCAzNTguMTU5IDQ4OS42N0MzNTcuNjIxIDQ5MC42MjUgMzU2LjkyOCA0OTEuNDUxIDM1Ni4wOCA0OTIuMTQ4QzM1NS4yMzkgNDkyLjgzNyAzNTQuMjc3IDQ5My4zNzEgMzUzLjE5MyA0OTMuNzVDMzUyLjExIDQ5NC4xMjkgMzUwLjkyOCA0OTQuMzE4IDM0OS42NDggNDk0LjMxOEMzNDcuNjMzIDQ5NC4zMTggMzQ1LjgzNyA0OTMuODQxIDM0NC4yNjEgNDkyLjg4NkMzNDIuNjg2IDQ5MS45MjQgMzQxLjQ0MyA0OTAuNTQ5IDM0MC41MzQgNDg4Ljc2MUMzMzkuNjMzIDQ4Ni45NzMgMzM5LjE4MiA0ODQuODQxIDMzOS4xODIgNDgyLjM2NEMzMzkuMTgyIDQ3OS44NzkgMzM5LjYzNiA0NzcuNzQ2IDM0MC41NDUgNDc1Ljk2NkMzNDEuNDU1IDQ3NC4xNzggMzQyLjY5NyA0NzIuODA3IDM0NC4yNzMgNDcxLjg1MkMzNDUuODQ4IDQ3MC44OSAzNDcuNjQgNDcwLjQwOSAzNDkuNjQ4IDQ3MC40MDlDMzUwLjg4MyA0NzAuNDA5IDM1Mi4wMzQgNDcwLjU4NyAzNTMuMTAyIDQ3MC45NDNDMzU0LjE3OCA0NzEuMjkyIDM1NS4xNDQgNDcxLjgwNyAzNTYgNDcyLjQ4OUMzNTYuODU2IDQ3My4xNjMgMzU3LjU2NCA0NzMuOTg5IDM1OC4xMjUgNDc0Ljk2NkMzNTguNjg2IDQ3NS45MzYgMzU5LjA2NCA0NzcuMDQ1IDM1OS4yNjEgNDc4LjI5NVpNMzYzLjQ2MyA0OTRWNDcwLjcyN0gzNjYuOTc0VjQ4MS44NDFIMzY3LjI1OUwzNzcuMDIgNDcwLjcyN0gzODEuNDRMMzcyLjA1NCA0ODEuMjA1TDM4MS40NzQgNDk0SDM3Ny4yNDdMMzY5LjcyNCA0ODMuNjAyTDM2Ni45NzQgNDg2Ljc2MVY0OTRIMzYzLjQ2M1pNMzg2LjY3OSA0OTQuMjE2QzM4Ni4wNTggNDk0LjIxNiAzODUuNTI0IDQ5My45OTYgMzg1LjA3NyA0OTMuNTU3QzM4NC42MyA0OTMuMTEgMzg0LjQwNiA0OTIuNTcyIDM4NC40MDYgNDkxLjk0M0MzODQuNDA2IDQ5MS4zMjIgMzg0LjYzIDQ5MC43OTIgMzg1LjA3NyA0OTAuMzUyQzM4NS41MjQgNDg5LjkwNSAzODYuMDU4IDQ4OS42ODIgMzg2LjY3OSA0ODkuNjgyQzM4Ny4zIDQ4OS42ODIgMzg3LjgzNCA0ODkuOTA1IDM4OC4yODEgNDkwLjM1MkMzODguNzI4IDQ5MC43OTIgMzg4Ljk1MiA0OTEuMzIyIDM4OC45NTIgNDkxLjk0M0MzODguOTUyIDQ5Mi4zNiAzODguODQ2IDQ5Mi43NDIgMzg4LjYzNCA0OTMuMDkxQzM4OC40MjkgNDkzLjQzMiAzODguMTU2IDQ5My43MDUgMzg3LjgxNSA0OTMuOTA5QzM4Ny40NzQgNDk0LjExNCAzODcuMDk2IDQ5NC4yMTYgMzg2LjY3OSA0OTQuMjE2Wk00MDAuNzIyIDQ3My43NVY0NzAuNzI3SDQxOC43MzNWNDczLjc1SDQxMS40NzJWNDk0SDQwNy45NzJWNDczLjc1SDQwMC43MjJaTTQyMC42MjggNDk0VjQ3Ni41NDVINDIzLjkxMlY0NzkuMzE4SDQyNC4wOTRDNDI0LjQxMiA0NzguMzc5IDQyNC45NzMgNDc3LjY0IDQyNS43NzYgNDc3LjEwMkM0MjYuNTg2IDQ3Ni41NTcgNDI3LjUwMyA0NzYuMjg0IDQyOC41MjYgNDc2LjI4NEM0MjguNzM4IDQ3Ni4yODQgNDI4Ljk4OCA0NzYuMjkyIDQyOS4yNzYgNDc2LjMwN0M0MjkuNTcxIDQ3Ni4zMjIgNDI5LjgwMiA0NzYuMzQxIDQyOS45NjkgNDc2LjM2NFY0NzkuNjE0QzQyOS44MzIgNDc5LjU3NiA0MjkuNTkgNDc5LjUzNCA0MjkuMjQxIDQ3OS40ODlDNDI4Ljg5MyA0NzkuNDM2IDQyOC41NDUgNDc5LjQwOSA0MjguMTk2IDQ3OS40MDlDNDI3LjM5MyA0NzkuNDA5IDQyNi42NzcgNDc5LjU4IDQyNi4wNDggNDc5LjkyQzQyNS40MjcgNDgwLjI1NCA0MjQuOTM1IDQ4MC43MiA0MjQuNTcxIDQ4MS4zMThDNDI0LjIwNyA0ODEuOTA5IDQyNC4wMjYgNDgyLjU4MyA0MjQuMDI2IDQ4My4zNDFWNDk0SDQyMC42MjhaTTQzNy44MzIgNDk0LjM4NkM0MzYuNzI2IDQ5NC4zODYgNDM1LjcyNiA0OTQuMTgyIDQzNC44MzIgNDkzLjc3M0M0MzMuOTM4IDQ5My4zNTYgNDMzLjIzIDQ5Mi43NTQgNDMyLjcwNyA0OTEuOTY2QzQzMi4xOTIgNDkxLjE3OCA0MzEuOTM1IDQ5MC4yMTIgNDMxLjkzNSA0ODkuMDY4QzQzMS45MzUgNDg4LjA4MyA0MzIuMTI0IDQ4Ny4yNzMgNDMyLjUwMyA0ODYuNjM2QzQzMi44ODIgNDg2IDQzMy4zOTMgNDg1LjQ5NiA0MzQuMDM3IDQ4NS4xMjVDNDM0LjY4MSA0ODQuNzU0IDQzNS40MDEgNDg0LjQ3MyA0MzYuMTk2IDQ4NC4yODRDNDM2Ljk5MSA0ODQuMDk1IDQzNy44MDIgNDgzLjk1MSA0MzguNjI4IDQ4My44NTJDNDM5LjY3MyA0ODMuNzMxIDQ0MC41MjIgNDgzLjYzMyA0NDEuMTczIDQ4My41NTdDNDQxLjgyNSA0ODMuNDczIDQ0Mi4yOTggNDgzLjM0MSA0NDIuNTk0IDQ4My4xNTlDNDQyLjg4OSA0ODIuOTc3IDQ0My4wMzcgNDgyLjY4MiA0NDMuMDM3IDQ4Mi4yNzNWNDgyLjE5M0M0NDMuMDM3IDQ4MS4yMDEgNDQyLjc1NyA0ODAuNDMyIDQ0Mi4xOTYgNDc5Ljg4NkM0NDEuNjQzIDQ3OS4zNDEgNDQwLjgxNyA0NzkuMDY4IDQzOS43MTkgNDc5LjA2OEM0MzguNTc1IDQ3OS4wNjggNDM3LjY3MyA0NzkuMzIyIDQzNy4wMTQgNDc5LjgzQzQzNi4zNjMgNDgwLjMzIDQzNS45MTIgNDgwLjg4NiA0MzUuNjYyIDQ4MS41TDQzMi40NjkgNDgwLjc3M0M0MzIuODQ4IDQ3OS43MTIgNDMzLjQwMSA0NzguODU2IDQzNC4xMjggNDc4LjIwNUM0MzQuODYzIDQ3Ny41NDUgNDM1LjcwNyA0NzcuMDY4IDQzNi42NjIgNDc2Ljc3M0M0MzcuNjE2IDQ3Ni40NyA0MzguNjIgNDc2LjMxOCA0MzkuNjczIDQ3Ni4zMThDNDQwLjM3IDQ3Ni4zMTggNDQxLjEwOSA0NzYuNDAyIDQ0MS44ODkgNDc2LjU2OEM0NDIuNjc3IDQ3Ni43MjcgNDQzLjQxMiA0NzcuMDIzIDQ0NC4wOTQgNDc3LjQ1NUM0NDQuNzgzIDQ3Ny44ODYgNDQ1LjM0OCA0NzguNTA0IDQ0NS43ODcgNDc5LjMwN0M0NDYuMjI2IDQ4MC4xMDIgNDQ2LjQ0NiA0ODEuMTM2IDQ0Ni40NDYgNDgyLjQwOVY0OTRINDQzLjEyOFY0OTEuNjE0SDQ0Mi45OTFDNDQyLjc3MiA0OTIuMDUzIDQ0Mi40NDIgNDkyLjQ4NSA0NDIuMDAzIDQ5Mi45MDlDNDQxLjU2MyA0OTMuMzMzIDQ0MC45OTkgNDkzLjY4NiA0NDAuMzEgNDkzLjk2NkM0MzkuNjIgNDk0LjI0NiA0MzguNzk1IDQ5NC4zODYgNDM3LjgzMiA0OTQuMzg2Wk00MzguNTcxIDQ5MS42NTlDNDM5LjUxIDQ5MS42NTkgNDQwLjMxMyA0OTEuNDczIDQ0MC45OCA0OTEuMTAyQzQ0MS42NTQgNDkwLjczMSA0NDIuMTY2IDQ5MC4yNDYgNDQyLjUxNCA0ODkuNjQ4QzQ0Mi44NyA0ODkuMDQyIDQ0My4wNDggNDg4LjM5NCA0NDMuMDQ4IDQ4Ny43MDVWNDg1LjQ1NUM0NDIuOTI3IDQ4NS41NzYgNDQyLjY5MiA0ODUuNjg5IDQ0Mi4zNDQgNDg1Ljc5NUM0NDIuMDAzIDQ4NS44OTQgNDQxLjYxMyA0ODUuOTgxIDQ0MS4xNzMgNDg2LjA1N0M0NDAuNzM0IDQ4Ni4xMjUgNDQwLjMwNiA0ODYuMTg5IDQzOS44ODkgNDg2LjI1QzQzOS40NzMgNDg2LjMwMyA0MzkuMTI0IDQ4Ni4zNDggNDM4Ljg0NCA0ODYuMzg2QzQzOC4xODUgNDg2LjQ3IDQzNy41ODIgNDg2LjYxIDQzNy4wMzcgNDg2LjgwN0M0MzYuNDk5IDQ4Ny4wMDQgNDM2LjA2NyA0ODcuMjg4IDQzNS43NDEgNDg3LjY1OUM0MzUuNDIzIDQ4OC4wMjMgNDM1LjI2NCA0ODguNTA4IDQzNS4yNjQgNDg5LjExNEM0MzUuMjY0IDQ4OS45NTUgNDM1LjU3NSA0OTAuNTkxIDQzNi4xOTYgNDkxLjAyM0M0MzYuODE3IDQ5MS40NDcgNDM3LjYwOSA0OTEuNjU5IDQzOC41NzEgNDkxLjY1OVpNNDY1LjI3OCA0NzYuNTQ1TDQ1OC45NDkgNDk0SDQ1NS4zMTJMNDQ4Ljk3MiA0NzYuNTQ1SDQ1Mi42MTlMNDU3LjA0IDQ4OS45NzdINDU3LjIyMkw0NjEuNjMxIDQ3Ni41NDVINDY1LjI3OFpNNDc1LjQwMSA0OTQuMzUyQzQ3My42ODEgNDk0LjM1MiA0NzIuMiA0OTMuOTg1IDQ3MC45NTcgNDkzLjI1QzQ2OS43MjMgNDkyLjUwOCA0NjguNzY4IDQ5MS40NjYgNDY4LjA5NCA0OTAuMTI1QzQ2Ny40MjcgNDg4Ljc3NyA0NjcuMDk0IDQ4Ny4xOTcgNDY3LjA5NCA0ODUuMzg2QzQ2Ny4wOTQgNDgzLjU5OCA0NjcuNDI3IDQ4Mi4wMjMgNDY4LjA5NCA0ODAuNjU5QzQ2OC43NjggNDc5LjI5NSA0NjkuNzA3IDQ3OC4yMzEgNDcwLjkxMiA0NzcuNDY2QzQ3Mi4xMjQgNDc2LjcwMSA0NzMuNTQxIDQ3Ni4zMTggNDc1LjE2MiA0NzYuMzE4QzQ3Ni4xNDcgNDc2LjMxOCA0NzcuMTAxIDQ3Ni40ODEgNDc4LjAyNiA0NzYuODA3QzQ3OC45NSA0NzcuMTMzIDQ3OS43NzkgNDc3LjY0NCA0ODAuNTE0IDQ3OC4zNDFDNDgxLjI0OSA0NzkuMDM4IDQ4MS44MjkgNDc5Ljk0MyA0ODIuMjUzIDQ4MS4wNTdDNDgyLjY3NyA0ODIuMTYzIDQ4Mi44ODkgNDgzLjUwOCA0ODIuODg5IDQ4NS4wOTFWNDg2LjI5NUg0NjkuMDE0VjQ4My43NUg0NzkuNTZDNDc5LjU2IDQ4Mi44NTYgNDc5LjM3OCA0ODIuMDY0IDQ3OS4wMTQgNDgxLjM3NUM0NzguNjUxIDQ4MC42NzggNDc4LjEzOSA0ODAuMTI5IDQ3Ny40OCA0NzkuNzI3QzQ3Ni44MjkgNDc5LjMyNiA0NzYuMDYzIDQ3OS4xMjUgNDc1LjE4NSA0NzkuMTI1QzQ3NC4yMyA0NzkuMTI1IDQ3My4zOTcgNDc5LjM2IDQ3Mi42ODUgNDc5LjgzQzQ3MS45OCA0ODAuMjkyIDQ3MS40MzUgNDgwLjg5OCA0NzEuMDQ4IDQ4MS42NDhDNDcwLjY3IDQ4Mi4zOSA0NzAuNDggNDgzLjE5NyA0NzAuNDggNDg0LjA2OFY0ODYuMDU3QzQ3MC40OCA0ODcuMjIzIDQ3MC42ODUgNDg4LjIxNiA0NzEuMDk0IDQ4OS4wMzRDNDcxLjUxIDQ4OS44NTIgNDcyLjA5IDQ5MC40NzcgNDcyLjgzMiA0OTAuOTA5QzQ3My41NzUgNDkxLjMzMyA0NzQuNDQyIDQ5MS41NDUgNDc1LjQzNSA0OTEuNTQ1QzQ3Ni4wNzkgNDkxLjU0NSA0NzYuNjY2IDQ5MS40NTUgNDc3LjE5NiA0OTEuMjczQzQ3Ny43MjYgNDkxLjA4MyA0NzguMTg1IDQ5MC44MDMgNDc4LjU3MSA0OTAuNDMyQzQ3OC45NTcgNDkwLjA2MSA0NzkuMjUzIDQ4OS42MDIgNDc5LjQ1NyA0ODkuMDU3TDQ4Mi42NzMgNDg5LjYzNkM0ODIuNDE2IDQ5MC41ODMgNDgxLjk1NCA0OTEuNDEzIDQ4MS4yODcgNDkyLjEyNUM0ODAuNjI4IDQ5Mi44MyA0NzkuNzk4IDQ5My4zNzkgNDc4Ljc5OCA0OTMuNzczQzQ3Ny44MDYgNDk0LjE1OSA0NzYuNjczIDQ5NC4zNTIgNDc1LjQwMSA0OTQuMzUyWk00OTAuMDU3IDQ3MC43MjdWNDk0SDQ4Ni42NTlWNDcwLjcyN0g0OTAuMDU3Wk00OTYuODY2IDQ5NC4yMTZDNDk2LjI0NSA0OTQuMjE2IDQ5NS43MTEgNDkzLjk5NiA0OTUuMjY0IDQ5My41NTdDNDk0LjgxNyA0OTMuMTEgNDk0LjU5NCA0OTIuNTcyIDQ5NC41OTQgNDkxLjk0M0M0OTQuNTk0IDQ5MS4zMjIgNDk0LjgxNyA0OTAuNzkyIDQ5NS4yNjQgNDkwLjM1MkM0OTUuNzExIDQ4OS45MDUgNDk2LjI0NSA0ODkuNjgyIDQ5Ni44NjYgNDg5LjY4MkM0OTcuNDg4IDQ4OS42ODIgNDk4LjAyMiA0ODkuOTA1IDQ5OC40NjkgNDkwLjM1MkM0OTguOTE2IDQ5MC43OTIgNDk5LjEzOSA0OTEuMzIyIDQ5OS4xMzkgNDkxLjk0M0M0OTkuMTM5IDQ5Mi4zNiA0OTkuMDMzIDQ5Mi43NDIgNDk4LjgyMSA0OTMuMDkxQzQ5OC42MTYgNDkzLjQzMiA0OTguMzQ0IDQ5My43MDUgNDk4LjAwMyA0OTMuOTA5QzQ5Ny42NjIgNDk0LjExNCA0OTcuMjgzIDQ5NC4yMTYgNDk2Ljg2NiA0OTQuMjE2Wk01MTIuMDU3IDQ5NFY0NzAuNzI3SDUyMC4zNTJDNTIyLjE1NSA0NzAuNzI3IDUyMy42NTIgNDcxLjAzOCA1MjQuODQxIDQ3MS42NTlDNTI2LjAzOCA0NzIuMjggNTI2LjkzMiA0NzMuMTQgNTI3LjUyMyA0NzQuMjM5QzUyOC4xMTQgNDc1LjMzIDUyOC40MDkgNDc2LjU5MSA1MjguNDA5IDQ3OC4wMjNDNTI4LjQwOSA0NzkuNDQ3IDUyOC4xMSA0ODAuNzAxIDUyNy41MTEgNDgxLjc4NEM1MjYuOTIgNDgyLjg2IDUyNi4wMjcgNDgzLjY5NyA1MjQuODMgNDg0LjI5NUM1MjMuNjQgNDg0Ljg5NCA1MjIuMTQ0IDQ4NS4xOTMgNTIwLjM0MSA0ODUuMTkzSDUxNC4wNTdWNDgyLjE3SDUyMC4wMjNDNTIxLjE1OSA0ODIuMTcgNTIyLjA4MyA0ODIuMDA4IDUyMi43OTUgNDgxLjY4MkM1MjMuNTE1IDQ4MS4zNTYgNTI0LjA0MiA0ODAuODgzIDUyNC4zNzUgNDgwLjI2MUM1MjQuNzA4IDQ3OS42NCA1MjQuODc1IDQ3OC44OTQgNTI0Ljg3NSA0NzguMDIzQzUyNC44NzUgNDc3LjE0NCA1MjQuNzA1IDQ3Ni4zODMgNTI0LjM2NCA0NzUuNzM5QzUyNC4wMyA0NzUuMDk1IDUyMy41MDQgNDc0LjYwMiA1MjIuNzg0IDQ3NC4yNjFDNTIyLjA3MiA0NzMuOTEzIDUyMS4xMzYgNDczLjczOSA1MTkuOTc3IDQ3My43MzlINTE1LjU2OFY0OTRINTEyLjA1N1pNNTIzLjU0NSA0ODMuNUw1MjkuMjk1IDQ5NEg1MjUuMjk1TDUxOS42NTkgNDgzLjVINTIzLjU0NVpNNTM5LjcxMyA0OTQuMzUyQzUzNy45OTMgNDk0LjM1MiA1MzYuNTEyIDQ5My45ODUgNTM1LjI3IDQ5My4yNUM1MzQuMDM1IDQ5Mi41MDggNTMzLjA4IDQ5MS40NjYgNTMyLjQwNiA0OTAuMTI1QzUzMS43NCA0ODguNzc3IDUzMS40MDYgNDg3LjE5NyA1MzEuNDA2IDQ4NS4zODZDNTMxLjQwNiA0ODMuNTk4IDUzMS43NCA0ODIuMDIzIDUzMi40MDYgNDgwLjY1OUM1MzMuMDggNDc5LjI5NSA1MzQuMDIgNDc4LjIzMSA1MzUuMjI0IDQ3Ny40NjZDNTM2LjQzNyA0NzYuNzAxIDUzNy44NTMgNDc2LjMxOCA1MzkuNDc0IDQ3Ni4zMThDNTQwLjQ1OSA0NzYuMzE4IDU0MS40MTQgNDc2LjQ4MSA1NDIuMzM4IDQ3Ni44MDdDNTQzLjI2MiA0NzcuMTMzIDU0NC4wOTIgNDc3LjY0NCA1NDQuODI3IDQ3OC4zNDFDNTQ1LjU2MiA0NzkuMDM4IDU0Ni4xNDEgNDc5Ljk0MyA1NDYuNTY1IDQ4MS4wNTdDNTQ2Ljk5IDQ4Mi4xNjMgNTQ3LjIwMiA0ODMuNTA4IDU0Ny4yMDIgNDg1LjA5MVY0ODYuMjk1SDUzMy4zMjdWNDgzLjc1SDU0My44NzJDNTQzLjg3MiA0ODIuODU2IDU0My42OSA0ODIuMDY0IDU0My4zMjcgNDgxLjM3NUM1NDIuOTYzIDQ4MC42NzggNTQyLjQ1MiA0ODAuMTI5IDU0MS43OTMgNDc5LjcyN0M1NDEuMTQxIDQ3OS4zMjYgNTQwLjM3NiA0NzkuMTI1IDUzOS40OTcgNDc5LjEyNUM1MzguNTQzIDQ3OS4xMjUgNTM3LjcwOSA0NzkuMzYgNTM2Ljk5NyA0NzkuODNDNTM2LjI5MyA0ODAuMjkyIDUzNS43NDcgNDgwLjg5OCA1MzUuMzYxIDQ4MS42NDhDNTM0Ljk4MiA0ODIuMzkgNTM0Ljc5MyA0ODMuMTk3IDUzNC43OTMgNDg0LjA2OFY0ODYuMDU3QzUzNC43OTMgNDg3LjIyMyA1MzQuOTk3IDQ4OC4yMTYgNTM1LjQwNiA0ODkuMDM0QzUzNS44MjMgNDg5Ljg1MiA1MzYuNDAyIDQ5MC40NzcgNTM3LjE0NSA0OTAuOTA5QzUzNy44ODcgNDkxLjMzMyA1MzguNzU1IDQ5MS41NDUgNTM5Ljc0NyA0OTEuNTQ1QzU0MC4zOTEgNDkxLjU0NSA1NDAuOTc4IDQ5MS40NTUgNTQxLjUwOSA0OTEuMjczQzU0Mi4wMzkgNDkxLjA4MyA1NDIuNDk3IDQ5MC44MDMgNTQyLjg4NCA0OTAuNDMyQzU0My4yNyA0OTAuMDYxIDU0My41NjUgNDg5LjYwMiA1NDMuNzcgNDg5LjA1N0w1NDYuOTg2IDQ4OS42MzZDNTQ2LjcyOCA0OTAuNTgzIDU0Ni4yNjYgNDkxLjQxMyA1NDUuNTk5IDQ5Mi4xMjVDNTQ0Ljk0IDQ5Mi44MyA1NDQuMTExIDQ5My4zNzkgNTQzLjExMSA0OTMuNzczQzU0Mi4xMTggNDk0LjE1OSA1NDAuOTg2IDQ5NC4zNTIgNTM5LjcxMyA0OTQuMzUyWk01NTAuOTcyIDUwMC41NDVWNDc2LjU0NUg1NTQuMjlWNDc5LjM3NUg1NTQuNTc0QzU1NC43NzEgNDc5LjAxMSA1NTUuMDU1IDQ3OC41OTEgNTU1LjQyNiA0NzguMTE0QzU1NS43OTcgNDc3LjYzNiA1NTYuMzEzIDQ3Ny4yMiA1NTYuOTcyIDQ3Ni44NjRDNTU3LjYzMSA0NzYuNSA1NTguNTAyIDQ3Ni4zMTggNTU5LjU4NSA0NzYuMzE4QzU2MC45OTQgNDc2LjMxOCA1NjIuMjUyIDQ3Ni42NzQgNTYzLjM1OCA0NzcuMzg2QzU2NC40NjQgNDc4LjA5OCA1NjUuMzMxIDQ3OS4xMjUgNTY1Ljk2IDQ4MC40NjZDNTY2LjU5NyA0ODEuODA3IDU2Ni45MTUgNDgzLjQyIDU2Ni45MTUgNDg1LjMwN0M1NjYuOTE1IDQ4Ny4xOTMgNTY2LjYgNDg4LjgxMSA1NjUuOTcyIDQ5MC4xNTlDNTY1LjM0MyA0OTEuNSA1NjQuNDc5IDQ5Mi41MzQgNTYzLjM4MSA0OTMuMjYxQzU2Mi4yODIgNDkzLjk4MSA1NjEuMDI4IDQ5NC4zNDEgNTU5LjYxOSA0OTQuMzQxQzU1OC41NTkgNDk0LjM0MSA1NTcuNjkxIDQ5NC4xNjMgNTU3LjAxNyA0OTMuODA3QzU1Ni4zNSA0OTMuNDUxIDU1NS44MjggNDkzLjAzNCA1NTUuNDQ5IDQ5Mi41NTdDNTU1LjA3IDQ5Mi4wOCA1NTQuNzc4IDQ5MS42NTUgNTU0LjU3NCA0OTEuMjg0SDU1NC4zNjlWNTAwLjU0NUg1NTAuOTcyWk01NTQuMzAxIDQ4NS4yNzNDNTU0LjMwMSA0ODYuNSA1NTQuNDc5IDQ4Ny41NzYgNTU0LjgzNSA0ODguNUM1NTUuMTkxIDQ4OS40MjQgNTU1LjcwNiA0OTAuMTQ4IDU1Ni4zODEgNDkwLjY3QzU1Ny4wNTUgNDkxLjE4NiA1NTcuODgxIDQ5MS40NDMgNTU4Ljg1OCA0OTEuNDQzQzU1OS44NzMgNDkxLjQ0MyA1NjAuNzIyIDQ5MS4xNzQgNTYxLjQwMyA0OTAuNjM2QzU2Mi4wODUgNDkwLjA5MSA1NjIuNiA0ODkuMzUyIDU2Mi45NDkgNDg4LjQyQzU2My4zMDUgNDg3LjQ4OSA1NjMuNDgzIDQ4Ni40MzkgNTYzLjQ4MyA0ODUuMjczQzU2My40ODMgNDg0LjEyMSA1NjMuMzA5IDQ4My4wODcgNTYyLjk2IDQ4Mi4xN0M1NjIuNjE5IDQ4MS4yNTQgNTYyLjEwNCA0ODAuNTMgNTYxLjQxNSA0ODBDNTYwLjczMyA0NzkuNDcgNTU5Ljg4MSA0NzkuMjA1IDU1OC44NTggNDc5LjIwNUM1NTcuODczIDQ3OS4yMDUgNTU3LjA0IDQ3OS40NTggNTU2LjM1OCA0NzkuOTY2QzU1NS42ODQgNDgwLjQ3MyA1NTUuMTcyIDQ4MS4xODIgNTU0LjgyNCA0ODIuMDkxQzU1NC40NzUgNDgzIDU1NC4zMDEgNDg0LjA2MSA1NTQuMzAxIDQ4NS4yNzNaTTU3OC4yNDQgNDk0LjM1MkM1NzYuNTI1IDQ5NC4zNTIgNTc1LjA0NCA0OTMuOTg1IDU3My44MDEgNDkzLjI1QzU3Mi41NjYgNDkyLjUwOCA1NzEuNjEyIDQ5MS40NjYgNTcwLjkzOCA0OTAuMTI1QzU3MC4yNzEgNDg4Ljc3NyA1NjkuOTM4IDQ4Ny4xOTcgNTY5LjkzOCA0ODUuMzg2QzU2OS45MzggNDgzLjU5OCA1NzAuMjcxIDQ4Mi4wMjMgNTcwLjkzOCA0ODAuNjU5QzU3MS42MTIgNDc5LjI5NSA1NzIuNTUxIDQ3OC4yMzEgNTczLjc1NiA0NzcuNDY2QzU3NC45NjggNDc2LjcwMSA1NzYuMzg0IDQ3Ni4zMTggNTc4LjAwNiA0NzYuMzE4QzU3OC45OTEgNDc2LjMxOCA1NzkuOTQ1IDQ3Ni40ODEgNTgwLjg2OSA0NzYuODA3QzU4MS43OTQgNDc3LjEzMyA1ODIuNjIzIDQ3Ny42NDQgNTgzLjM1OCA0NzguMzQxQzU4NC4wOTMgNDc5LjAzOCA1ODQuNjcyIDQ3OS45NDMgNTg1LjA5NyA0ODEuMDU3QzU4NS41MjEgNDgyLjE2MyA1ODUuNzMzIDQ4My41MDggNTg1LjczMyA0ODUuMDkxVjQ4Ni4yOTVINTcxLjg1OFY0ODMuNzVINTgyLjQwM0M1ODIuNDAzIDQ4Mi44NTYgNTgyLjIyMiA0ODIuMDY0IDU4MS44NTggNDgxLjM3NUM1ODEuNDk0IDQ4MC42NzggNTgwLjk4MyA0ODAuMTI5IDU4MC4zMjQgNDc5LjcyN0M1NzkuNjcyIDQ3OS4zMjYgNTc4LjkwNyA0NzkuMTI1IDU3OC4wMjggNDc5LjEyNUM1NzcuMDc0IDQ3OS4xMjUgNTc2LjI0MSA0NzkuMzYgNTc1LjUyOCA0NzkuODNDNTc0LjgyNCA0ODAuMjkyIDU3NC4yNzggNDgwLjg5OCA1NzMuODkyIDQ4MS42NDhDNTczLjUxMyA0ODIuMzkgNTczLjMyNCA0ODMuMTk3IDU3My4zMjQgNDg0LjA2OFY0ODYuMDU3QzU3My4zMjQgNDg3LjIyMyA1NzMuNTI4IDQ4OC4yMTYgNTczLjkzOCA0ODkuMDM0QzU3NC4zNTQgNDg5Ljg1MiA1NzQuOTM0IDQ5MC40NzcgNTc1LjY3NiA0OTAuOTA5QzU3Ni40MTkgNDkxLjMzMyA1NzcuMjg2IDQ5MS41NDUgNTc4LjI3OCA0OTEuNTQ1QzU3OC45MjIgNDkxLjU0NSA1NzkuNTA5IDQ5MS40NTUgNTgwLjA0IDQ5MS4yNzNDNTgwLjU3IDQ5MS4wODMgNTgxLjAyOCA0OTAuODAzIDU4MS40MTUgNDkwLjQzMkM1ODEuODAxIDQ5MC4wNjEgNTgyLjA5NyA0ODkuNjAyIDU4Mi4zMDEgNDg5LjA1N0w1ODUuNTE3IDQ4OS42MzZDNTg1LjI1OSA0OTAuNTgzIDU4NC43OTcgNDkxLjQxMyA1ODQuMTMxIDQ5Mi4xMjVDNTgzLjQ3MiA0OTIuODMgNTgyLjY0MiA0OTMuMzc5IDU4MS42NDIgNDkzLjc3M0M1ODAuNjUgNDk0LjE1OSA1NzkuNTE3IDQ5NC4zNTIgNTc4LjI0NCA0OTQuMzUyWk01OTQuNTgyIDQ5NC4zODZDNTkzLjQ3NiA0OTQuMzg2IDU5Mi40NzYgNDk0LjE4MiA1OTEuNTgyIDQ5My43NzNDNTkwLjY4OCA0OTMuMzU2IDU4OS45OCA0OTIuNzU0IDU4OS40NTcgNDkxLjk2NkM1ODguOTQyIDQ5MS4xNzggNTg4LjY4NSA0OTAuMjEyIDU4OC42ODUgNDg5LjA2OEM1ODguNjg1IDQ4OC4wODMgNTg4Ljg3NCA0ODcuMjczIDU4OS4yNTMgNDg2LjYzNkM1ODkuNjMyIDQ4NiA1OTAuMTQzIDQ4NS40OTYgNTkwLjc4NyA0ODUuMTI1QzU5MS40MzEgNDg0Ljc1NCA1OTIuMTUxIDQ4NC40NzMgNTkyLjk0NiA0ODQuMjg0QzU5My43NDEgNDg0LjA5NSA1OTQuNTUyIDQ4My45NTEgNTk1LjM3OCA0ODMuODUyQzU5Ni40MjMgNDgzLjczMSA1OTcuMjcyIDQ4My42MzMgNTk3LjkyMyA0ODMuNTU3QzU5OC41NzUgNDgzLjQ3MyA1OTkuMDQ4IDQ4My4zNDEgNTk5LjM0NCA0ODMuMTU5QzU5OS42MzkgNDgyLjk3NyA1OTkuNzg3IDQ4Mi42ODIgNTk5Ljc4NyA0ODIuMjczVjQ4Mi4xOTNDNTk5Ljc4NyA0ODEuMjAxIDU5OS41MDcgNDgwLjQzMiA1OTguOTQ2IDQ3OS44ODZDNTk4LjM5MyA0NzkuMzQxIDU5Ny41NjcgNDc5LjA2OCA1OTYuNDY5IDQ3OS4wNjhDNTk1LjMyNSA0NzkuMDY4IDU5NC40MjMgNDc5LjMyMiA1OTMuNzY0IDQ3OS44M0M1OTMuMTEzIDQ4MC4zMyA1OTIuNjYyIDQ4MC44ODYgNTkyLjQxMiA0ODEuNUw1ODkuMjE5IDQ4MC43NzNDNTg5LjU5OCA0NzkuNzEyIDU5MC4xNTEgNDc4Ljg1NiA1OTAuODc4IDQ3OC4yMDVDNTkxLjYxMyA0NzcuNTQ1IDU5Mi40NTcgNDc3LjA2OCA1OTMuNDEyIDQ3Ni43NzNDNTk0LjM2NiA0NzYuNDcgNTk1LjM3IDQ3Ni4zMTggNTk2LjQyMyA0NzYuMzE4QzU5Ny4xMiA0NzYuMzE4IDU5Ny44NTkgNDc2LjQwMiA1OTguNjM5IDQ3Ni41NjhDNTk5LjQyNyA0NzYuNzI3IDYwMC4xNjIgNDc3LjAyMyA2MDAuODQ0IDQ3Ny40NTVDNjAxLjUzMyA0NzcuODg2IDYwMi4wOTggNDc4LjUwNCA2MDIuNTM3IDQ3OS4zMDdDNjAyLjk3NiA0ODAuMTAyIDYwMy4xOTYgNDgxLjEzNiA2MDMuMTk2IDQ4Mi40MDlWNDk0SDU5OS44NzhWNDkxLjYxNEg1OTkuNzQxQzU5OS41MjIgNDkyLjA1MyA1OTkuMTkyIDQ5Mi40ODUgNTk4Ljc1MyA0OTIuOTA5QzU5OC4zMTMgNDkzLjMzMyA1OTcuNzQ5IDQ5My42ODYgNTk3LjA2IDQ5My45NjZDNTk2LjM3IDQ5NC4yNDYgNTk1LjU0NSA0OTQuMzg2IDU5NC41ODIgNDk0LjM4NlpNNTk1LjMyMSA0OTEuNjU5QzU5Ni4yNiA0OTEuNjU5IDU5Ny4wNjMgNDkxLjQ3MyA1OTcuNzMgNDkxLjEwMkM1OTguNDA0IDQ5MC43MzEgNTk4LjkxNiA0OTAuMjQ2IDU5OS4yNjQgNDg5LjY0OEM1OTkuNjIgNDg5LjA0MiA1OTkuNzk4IDQ4OC4zOTQgNTk5Ljc5OCA0ODcuNzA1VjQ4NS40NTVDNTk5LjY3NyA0ODUuNTc2IDU5OS40NDIgNDg1LjY4OSA1OTkuMDk0IDQ4NS43OTVDNTk4Ljc1MyA0ODUuODk0IDU5OC4zNjMgNDg1Ljk4MSA1OTcuOTIzIDQ4Ni4wNTdDNTk3LjQ4NCA0ODYuMTI1IDU5Ny4wNTYgNDg2LjE4OSA1OTYuNjM5IDQ4Ni4yNUM1OTYuMjIzIDQ4Ni4zMDMgNTk1Ljg3NCA0ODYuMzQ4IDU5NS41OTQgNDg2LjM4NkM1OTQuOTM1IDQ4Ni40NyA1OTQuMzMyIDQ4Ni42MSA1OTMuNzg3IDQ4Ni44MDdDNTkzLjI0OSA0ODcuMDA0IDU5Mi44MTcgNDg3LjI4OCA1OTIuNDkxIDQ4Ny42NTlDNTkyLjE3MyA0ODguMDIzIDU5Mi4wMTQgNDg4LjUwOCA1OTIuMDE0IDQ4OS4xMTRDNTkyLjAxNCA0ODkuOTU1IDU5Mi4zMjUgNDkwLjU5MSA1OTIuOTQ2IDQ5MS4wMjNDNTkzLjU2NyA0OTEuNDQ3IDU5NC4zNTkgNDkxLjY1OSA1OTUuMzIxIDQ5MS42NTlaTTYxNS44NjkgNDc2LjU0NVY0NzkuMjczSDYwNi4zMzVWNDc2LjU0NUg2MTUuODY5Wk02MDguODkyIDQ3Mi4zNjRINjEyLjI5VjQ4OC44NzVDNjEyLjI5IDQ4OS41MzQgNjEyLjM4OCA0OTAuMDMgNjEyLjU4NSA0OTAuMzY0QzYxMi43ODIgNDkwLjY4OSA2MTMuMDM2IDQ5MC45MTMgNjEzLjM0NyA0OTEuMDM0QzYxMy42NjUgNDkxLjE0OCA2MTQuMDA5IDQ5MS4yMDUgNjE0LjM4MSA0OTEuMjA1QzYxNC42NTMgNDkxLjIwNSA2MTQuODkyIDQ5MS4xODYgNjE1LjA5NyA0OTEuMTQ4QzYxNS4zMDEgNDkxLjExIDYxNS40NiA0OTEuMDggNjE1LjU3NCA0OTEuMDU3TDYxNi4xODggNDkzLjg2NEM2MTUuOTkxIDQ5My45MzkgNjE1LjcxIDQ5NC4wMTUgNjE1LjM0NyA0OTQuMDkxQzYxNC45ODMgNDk0LjE3NCA2MTQuNTI4IDQ5NC4yMiA2MTMuOTgzIDQ5NC4yMjdDNjEzLjA4OSA0OTQuMjQyIDYxMi4yNTYgNDk0LjA4MyA2MTEuNDgzIDQ5My43NUM2MTAuNzEgNDkzLjQxNyA2MTAuMDg1IDQ5Mi45MDIgNjA5LjYwOCA0OTIuMjA1QzYwOS4xMzEgNDkxLjUwOCA2MDguODkyIDQ5MC42MzMgNjA4Ljg5MiA0ODkuNThWNDcyLjM2NFpNNjIxLjg2NiA0OTQuMjE2QzYyMS4yNDUgNDk0LjIxNiA2MjAuNzExIDQ5My45OTYgNjIwLjI2NCA0OTMuNTU3QzYxOS44MTcgNDkzLjExIDYxOS41OTQgNDkyLjU3MiA2MTkuNTk0IDQ5MS45NDNDNjE5LjU5NCA0OTEuMzIyIDYxOS44MTcgNDkwLjc5MiA2MjAuMjY0IDQ5MC4zNTJDNjIwLjcxMSA0ODkuOTA1IDYyMS4yNDUgNDg5LjY4MiA2MjEuODY2IDQ4OS42ODJDNjIyLjQ4OCA0ODkuNjgyIDYyMy4wMjIgNDg5LjkwNSA2MjMuNDY5IDQ5MC4zNTJDNjIzLjkxNiA0OTAuNzkyIDYyNC4xMzkgNDkxLjMyMiA2MjQuMTM5IDQ5MS45NDNDNjI0LjEzOSA0OTIuMzYgNjI0LjAzMyA0OTIuNzQyIDYyMy44MjEgNDkzLjA5MUM2MjMuNjE2IDQ5My40MzIgNjIzLjM0NCA0OTMuNzA1IDYyMy4wMDMgNDkzLjkwOUM2MjIuNjYyIDQ5NC4xMTQgNjIyLjI4MyA0OTQuMjE2IDYyMS44NjYgNDk0LjIxNloiLz4KPC9zdmc+" width="218" height="42">
+</div>
+<a class="tb-home-link" href="index.html">← Tech Hub</a><nav class="nav">
+<h4>Endpoints</h4>
+<a href="#intro-pt">Introdução &amp; Autenticação</a>
+<a href="#resolve-navigation-code-pt">Resolve Navigation Code (fluxo recomendado)</a>
+<a href="#create-navigation-code-pt">Create Navigation Code (aplicativo)</a>
+<a href="#client-balance-pt">GET /api/client/{id}/balance</a>
+<a href="#cliente-debito-pt">POST /api/cliente/{id}/cashback/Debit</a>
+<a href="#cliente-debito-confirm-pt">POST /api/cliente/{id}/cashback/DebitConfirm</a>
+<a href="#cliente-terms-accept-pt">POST /api/cliente/{id}/terms/accept</a>
+<a href="#cliente-terms-accept-route-pt">POST /api/cliente/{id}/terms/{contentId}/accept</a>
+<a href="#env-pt">GET /api/Public/environment</a>
+<a href="#pingpong-pt">POST /api/Public/pingpong</a>
+<a href="#queue-pt">POST /api/Public/queue</a>
+<h4>Models</h4>
+<a href="#models-pt">Modelos de Request &amp; Response</a>
+<a href="#public-search-pt">Legado: Search</a>
+</nav>
+</aside>
+<main id="main-content-pt">
+<section id="intro-pt">
+<h1>TravelBACK Cashback API <span class="pill">v5.0</span></h1>
+<p>Bem-vindo à documentação pública da <strong>TravelBACK Cashback API</strong>. Esta API permite integrações com o ecossistema de cashback da TravelBACK, oferecendo endpoints para consulta de saldo, registro de débitos e comunicação assíncrona com o backend.</p>
+<h3>Autenticação</h3>
+<p><strong>Fluxo recomendado na v5.0:</strong> o aplicativo autenticado chama <a href="#create-navigation-code-pt">Create Navigation Code</a>. O parceiro recebe o código e chama <a href="#resolve-navigation-code-pt">Resolve Navigation Code</a> para obter o <code>accountId</code> e os dados retornados. Use esse identificador nas próximas operações que pedem o ID da conta, como consulta de saldo. Não é necessário chamar Search nem Get Account para identificar o usuário nesse fluxo.</p><p>As operações de parceiro documentadas neste guia usam a credencial fornecida à integração. O aplicativo usa <code>Authorization: Bearer &lt;TOKEN_DO_USUARIO&gt;</code> para criar o código; o token do usuário não faz parte da integração do parceiro.</p>
+</section>
+
+<section id="resolve-navigation-code-pt">
+<h2><span class="method POST">POST</span> /api/MarketplaceAuth/ResolveNavigationCode</h2>
+<p><strong>Ponto de entrada para parceiros.</strong> Envie o código recebido no campo <code>navigationCode</code>. A resposta da resolução traz <code>accountId</code> e dados do usuário.</p>
+<p>Use a credencial de parceiro fornecida para o seu ambiente. O exemplo usa <code>x-client-key</code>, o cabeçalho de parceiro desta documentação; o OpenAPI fornecido define os esquemas globalmente, sem discriminar a segurança por operação.</p>
+<h3>Exemplo de requisição</h3>
+<pre><code>curl -X POST '&lt;BASE_URL&gt;/api/MarketplaceAuth/ResolveNavigationCode' \
+  -H 'Content-Type: application/json' \
+  -H 'x-client-key: &lt;CLIENT_KEY&gt;' \
+  --data '{"navigationCode": "MK-XXXX-XXXX-XXXX"}'</code></pre>
+<h3>Resposta de sucesso: estrutura observada</h3>
+<p>O <code>accountId</code> vem na raiz. Perfil, saldo, preferências, extrato e labels ficam dentro de <code>account</code>; por exemplo, o nome está em <code>account.accountDetails.name</code>. A estrutura abaixo segue o retorno observado. Não trate campos ausentes como garantidos.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Tabela da documentação"><table><thead><tr><th>Campo</th><th>Tipo observado</th><th>Descrição</th></tr></thead><tbody>
+<tr><td><code>navigationCode</code></td><td>string</td><td>Código resolvido.</td></tr>
+<tr><td><code>expiresAt</code></td><td>date-time</td><td>Validade do código.</td></tr>
+<tr><td><code>accountId</code></td><td>UUID</td><td>Identificador da conta para operações seguintes.</td></tr>
+<tr><td><code>account</code></td><td>object</td><td>Contêiner com os dados da conta.</td></tr>
+<tr><td><code>account.account</code></td><td>object</td><td>Registro da conta.</td></tr>
+<tr><td><code>account.accountDetails</code></td><td>object</td><td>Perfil e dados de contato.</td></tr>
+<tr><td><code>account.balance</code></td><td>object</td><td>Saldos e valores formatados.</td></tr>
+<tr><td><code>account.setups</code></td><td>object</td><td>Preferências da conta; neste exemplo inclui <code>currency</code>.</td></tr>
+<tr><td><code>account.statements</code></td><td>array</td><td>Transações do extrato.</td></tr>
+<tr><td><code>account.labels</code></td><td>array</td><td>Labels da conta.</td></tr>
+<tr><td><code>result / success</code></td><td>boolean</td><td>Indicadores observados no corpo.</td></tr>
+<tr><td><code>status</code></td><td>integer</td><td>Status no corpo; o exemplo retorna 200.</td></tr>
+<tr><td><code>message / messageIng / messageEsp / errorMessage</code></td><td>string</td><td>Campos de mensagem no corpo da resposta.</td></tr></tbody></table></div>
+<details open><summary>Exemplo com dados fictícios (um item por lista)</summary>
+<pre><code>{
+  "navigationCode": "MK-XXXX-XXXX-XXXX",
+  "expiresAt": "2030-01-01T12:05:00Z",
+  "accountId": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+  "account": {
+    "account": {
+      "id": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+      "legalId": "00000000000",
+      "status": 1,
+      "type": "",
+      "creationTime": "2030-01-01T12:00:00Z",
+      "updateTime": "2030-01-01T12:00:00Z",
+      "countryId": "5d895b1f-7750-543b-a2c3-422b5299e85d",
+      "lastAccessTime": "2030-01-01T12:00:00Z",
+      "lastActivity": "2030-01-01T12:00:00Z",
+      "expireDays": 365
+    },
+    "accountDetails": {
+      "id": "ce40c70f-fd69-5393-a2ab-ed3becec3cef",
+      "name": "Example User",
+      "email": "user@example.com",
+      "phoneNumber": "+12025550123",
+      "accountId": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+      "creationTime": "2030-01-01T12:00:00Z",
+      "updateTime": "2030-01-01T12:00:00Z",
+      "validEmail": true,
+      "validPhoneNumber": false
+    },
+    "balance": {
+      "id": "ce40c70f-fd69-5393-a2ab-ed3becec3cef",
+      "available": 25.5,
+      "accountId": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+      "creationTime": "2030-01-01T12:00:00Z",
+      "updateTime": "2030-01-01T12:00:00Z",
+      "accumulation": 25.5,
+      "spentPoints": 0.0,
+      "formatedAccumulation": "$25.50",
+      "formatedSpentPoints": "$25.50",
+      "formatedAvailable": "$25.50",
+      "conversionRate": "1.00",
+      "formatedAccumulationBRL": "R$ 127,50",
+      "formatedSpentPointsBRL": "R$ 127,50",
+      "formatedAvailableBRL": "R$ 127,50",
+      "conversionRateBRL": "5.00"
+    },
+    "setups": {
+      "id": "ce40c70f-fd69-5393-a2ab-ed3becec3cef",
+      "accountId": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+      "defaultCurrencyId": "a6c8d7ed-3df1-5e4f-876f-cb61160ac70e",
+      "defaultCountryId": "a9559187-73c0-5c43-9626-3ee834b2e50e",
+      "lang": "en-US",
+      "notificationByEmail": false,
+      "notificationByPhone": false,
+      "notificationByPush": false,
+      "notificationByWhatsapp": false,
+      "defaultChannel": "email",
+      "currency": {
+        "id": "ce40c70f-fd69-5393-a2ab-ed3becec3cef",
+        "name": "US Dollar",
+        "code": "USD",
+        "symbol": "$",
+        "creationTime": "2030-01-01T12:00:00Z",
+        "updateTime": "2030-01-01T12:00:00Z",
+        "currentExchangeRate": 1,
+        "exchangeRateUpdateTime": "2030-01-01T12:00:00Z"
+      }
+    },
+    "statements": [
+      {
+        "id": "ce40c70f-fd69-5393-a2ab-ed3becec3cef",
+        "accountId": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+        "originCurrencyId": "cb405e93-c021-53a6-9d73-38d642909f6d",
+        "originCurrencySymbol": "$",
+        "title": "Example transaction",
+        "type": 1,
+        "value": 25.5,
+        "creationTime": "2030-01-01T12:00:00Z",
+        "exchangeRate": 1.0,
+        "originValue": 25,
+        "status": 0
+      }
+    ],
+    "labels": [
+      {
+        "id": "ce40c70f-fd69-5393-a2ab-ed3becec3cef",
+        "accountId": "b0e6ec51-4718-5e0b-98cd-421ed9de6a7e",
+        "labelId": "588e20e2-c202-544c-9284-9839b3557c10",
+        "labelName": "Example label",
+        "labelDescription": "Example label description",
+        "creationTime": "2030-01-01T12:00:00Z",
+        "value": "Example",
+        "labelCreationTime": "2030-01-01T12:00:00Z"
+      }
+    ]
+  },
+  "result": true,
+  "message": "Exemplo de resolução.",
+  "messageIng": "Example resolution.",
+  "messageEsp": "Ejemplo de resolución.",
+  "status": 200,
+  "success": true,
+  "errorMessage": ""
+}</code></pre>
+</details>
+<p>Verifique o resultado e um <code>accountId</code> válido antes de usar a conta. Não recorra a Search se a resolução falhar.</p>
+</section>
+
+<section id="create-navigation-code-pt">
+<h2><span class="method POST">POST</span> /api/MarketplaceAuth/CreateNavigationCode</h2>
+<p><strong>Uso pelo aplicativo TravelBACK, com o usuário autenticado.</strong> O app cria o código com o token do usuário. O parceiro recebe o código e resolve no seu backend, sem chamar este método ou receber o token do usuário. <code>state</code> é um campo de texto opcional, que aceita <code>null</code>.</p>
+<h3>Exemplo de requisição</h3>
+<pre><code>curl -X POST '&lt;BASE_URL&gt;/api/MarketplaceAuth/CreateNavigationCode' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer &lt;USER_TOKEN&gt;' \
+  --data '{"state": "example"}'</code></pre>
+<h3>Resposta HTTP 200 (exemplo parcial)</h3>
+<pre><code>{
+  "result": true,
+  "success": true,
+  "navigationCode": "MK-XXXX-XXXX-XXXX",
+  "launchUrl": "https://partner.example/path",
+  "expiresAt": "2030-01-01T12:05:00Z"
+}</code></pre>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Campos da resposta"><table><thead><tr><th>Campo</th><th>Tipo</th><th>Descrição</th></tr></thead><tbody>
+<tr><td><code>navigationCode</code></td><td>string / null</td><td>Código de navegação retornado pela API.</td></tr>
+<tr><td><code>launchUrl</code></td><td>string / null</td><td>URL de abertura retornada ao aplicativo.</td></tr>
+<tr><td><code>expiresAt</code></td><td>string (date-time)</td><td>Data e hora de expiração do código.</td></tr>
+<tr><td><code>result</code></td><td>boolean</td><td>Indicador de resultado da operação.</td></tr>
+<tr><td><code>message</code></td><td>string / null</td><td>Mensagem da operação.</td></tr>
+<tr><td><code>messageIng</code></td><td>string / null</td><td>Mensagem em inglês.</td></tr>
+<tr><td><code>messageEsp</code></td><td>string / null</td><td>Mensagem em espanhol.</td></tr>
+<tr><td><code>status</code></td><td>integer (int32)</td><td>Status no corpo da resposta, distinto do status HTTP.</td></tr>
+<tr><td><code>success</code></td><td>boolean</td><td>Indicador de sucesso no modelo de resposta.</td></tr>
+<tr><td><code>errorMessage</code></td><td>string / null</td><td>Mensagem de erro, quando informada.</td></tr>
+<tr><td><code>data</code></td><td>não especificado / null</td><td>Dados adicionais; estrutura não especificada.</td></tr>
+</tbody></table></div>
 </section>
 
 <section id="client-balance-pt">
@@ -842,51 +1108,34 @@ pre,code{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Consolas,monos
 </section>
 
 <section id="cliente-debito-pt">
-<h2><span class="method POST">POST</span> /api/cliente/{id}/cashback/Debit</h2>
-<p>Registra um débito de cashback quando o cliente utiliza seu saldo para uma compra.</p>
-<h3>Validações</h3>
-<ul>
-<li>Cliente deve existir na base.</li>
-<li>Saldo suficiente para débito.</li>
-<li>Transação não duplicada (janela de 30 minutos).</li>
-<li>Valor deve ser positivo (mínimo 0.01).</li>
-</ul>
-<h3>Body da requisição</h3>
-<div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table / Tabela da documentação"><table>
-<thead><tr><th>Campo</th><th>Tipo</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
-<tbody>
-<tr><td>valorDebito</td><td>number</td><td>Sim</td><td>Valor do débito (mínimo 0.01).</td></tr>
-<tr><td>idTransacaoVenda</td><td>UUID</td><td>Sim</td><td>Identificador único da transação de venda.</td></tr>
-<tr><td>dataOperacao</td><td>date-time</td><td>Não</td><td>Data da operação (ISO-8601).</td></tr>
-</tbody>
-</table>
-</div><h3>Exemplo de requisição</h3>
-<pre><code>curl -X POST "https://travelcashcustomurl.azurewebsites.net/api/cliente/00000000-0000-0000-0000-000000000000/cashback/Debit" \
-  -H "Content-Type: application/json" \
-  -H "x-client-key: &lt;SEU_CLIENT_KEY&gt;" \
-  -d '{
-    "valorDebito": 49.90,
-    "idTransacaoVenda": "4f0e2cdb-6a22-4ef2-8b7f-558e6b2e0a22",
-    "dataOperacao": "2025-10-06T11:15:00-03:00"
-  }'</code></pre>
-<h3>Resposta 200 (exemplo)</h3>
-<pre><code>{
-  "accountId": "00000000-0000-0000-0000-000000000000",
-  "debited": 49.90,
-  "newBalance": 305.10,
-  "status": "ok"
-}</code></pre>
-<h3>Respostas de erro</h3>
-<div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table / Tabela da documentação"><table>
-<thead><tr><th>Status</th><th>Descrição</th></tr></thead>
-<tbody>
-<tr><td>400</td><td>Requisição inválida (campos faltando ou valor inválido).</td></tr>
-<tr><td>404</td><td>Cliente não encontrado.</td></tr>
-<tr><td>409</td><td>Saldo insuficiente ou transação duplicada.</td></tr>
-<tr><td>500</td><td>Erro interno do servidor.</td></tr>
-</tbody>
-</table>
-</div></section>
+<h2><span class="method POST">POST</span> /api/cliente/{id}/cashback/Debit</h2><p>Solicita débito de cashback. Informe o UUID da conta no segmento <code>{id}</code>.</p><div class="table-wrap" tabindex="0" role="region" aria-label="Tabela da documentação"><table><thead><tr><th>Campo</th><th>Tipo</th><th>Obrigatório no OpenAPI</th><th>Descrição</th></tr></thead><tbody>
+<tr><td><code>valorDebito</code></td><td>number</td><td>Sim</td><td>Valor do débito; mínimo 0,01.</td></tr>
+<tr><td><code>idTransacaoVenda</code></td><td>uuid</td><td>Sim</td><td>Identificador da transação da venda.</td></tr>
+<tr><td><code>referenceCode</code></td><td>string</td><td>Sim</td><td>Referência da operação; string não vazia.</td></tr>
+<tr><td><code>dataOperacao</code></td><td>date-time</td><td>Sim</td><td>Data/hora da operação em ISO 8601.</td></tr>
+<tr><td><code>titleComplement</code></td><td>string / null</td><td>Não</td><td>Complemento opcional do título.</td></tr>
+<tr><td><code>metadata</code></td><td>object / null</td><td>Não</td><td>Objeto opcional de dados adicionais.</td></tr>
+<tr><td><code>productModel</code></td><td>string / null</td><td>Não</td><td>Modelo de produto, quando informado.</td></tr></tbody></table></div><h3>Exemplo de requisição</h3><pre><code>curl -X POST '&lt;BASE_URL&gt;/api/cliente/b0e6ec51-4718-5e0b-98cd-421ed9de6a7e/cashback/Debit' \
+  -H 'x-client-key: &lt;CLIENT_KEY&gt;' \
+  -H 'Content-Type: application/json' \
+  --data '{
+  "valorDebito": 25.5,
+  "idTransacaoVenda": "ce77e0fd-8ff7-4c56-a6e2-973d9e5bab8c",
+  "referenceCode": "ORDER-EXAMPLE-001",
+  "dataOperacao": "2030-01-01T12:00:00Z",
+  "titleComplement": "Example order",
+  "metadata": {
+    "orderId": "ORDER-EXAMPLE-001"
+  },
+  "productModel": "Example"
+}'</code></pre><h3>Respostas HTTP no OpenAPI</h3><div class="table-wrap" tabindex="0" role="region" aria-label="Tabela da documentação"><table><thead><tr><th>HTTP</th><th>Corpo da resposta</th></tr></thead><tbody>
+<tr><td>200</td><td>Sem estrutura especificada</td></tr>
+<tr><td>400</td><td><code>ProblemDetails</code></td></tr>
+<tr><td>404</td><td><code>ProblemDetails</code></td></tr>
+<tr><td>409</td><td><code>ProblemDetails</code></td></tr>
+<tr><td>422</td><td><code>ProblemDetails</code></td></tr>
+<tr><td>500</td><td>Sem estrutura especificada</td></tr></tbody></table></div><p>O HTTP 200 indica sucesso; o OpenAPI não descreve o corpo dessa resposta.</p>
+</section>
 
 <section id="cliente-debito-confirm-pt">
 <h2><span class="method POST">POST</span> /api/cliente/{id}/cashback/DebitConfirm</h2>
@@ -1208,15 +1457,15 @@ pre,code{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Consolas,monos
 <section id="models-pt">
 <h2>Modelos de Request &amp; Response</h2>
 <h3>CashbackDebitRequest</h3>
-<div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table / Tabela da documentação"><table>
-<thead><tr><th>Campo</th><th>Tipo</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
-<tbody>
-<tr><td>valorDebito</td><td>number</td><td>Sim</td><td>Valor do débito (mín: 0.01)</td></tr>
-<tr><td>idTransacaoVenda</td><td>UUID</td><td>Sim</td><td>ID único da transação de venda</td></tr>
-<tr><td>dataOperacao</td><td>date-time</td><td>Não</td><td>Timestamp da operação</td></tr>
-</tbody>
-</table>
-</div><h3>DebitConfirmRequest</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Tabela da documentação"><table><thead><tr><th>Campo</th><th>Tipo</th><th>Obrigatório no OpenAPI</th><th>Descrição</th></tr></thead><tbody>
+<tr><td><code>valorDebito</code></td><td>number</td><td>Sim</td><td>Valor do débito; mínimo 0,01.</td></tr>
+<tr><td><code>idTransacaoVenda</code></td><td>uuid</td><td>Sim</td><td>Identificador da transação da venda.</td></tr>
+<tr><td><code>referenceCode</code></td><td>string</td><td>Sim</td><td>Referência da operação; string não vazia.</td></tr>
+<tr><td><code>dataOperacao</code></td><td>date-time</td><td>Sim</td><td>Data/hora da operação em ISO 8601.</td></tr>
+<tr><td><code>titleComplement</code></td><td>string / null</td><td>Não</td><td>Complemento opcional do título.</td></tr>
+<tr><td><code>metadata</code></td><td>object / null</td><td>Não</td><td>Objeto opcional de dados adicionais.</td></tr>
+<tr><td><code>productModel</code></td><td>string / null</td><td>Não</td><td>Modelo de produto, quando informado.</td></tr></tbody></table></div>
+<h3>DebitConfirmRequest</h3>
 <div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table / Tabela da documentação"><table>
 <thead><tr><th>Campo</th><th>Tipo</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
 <tbody>
@@ -1257,8 +1506,63 @@ pre,code{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Consolas,monos
 </table>
 </div></section>
 
+<section id="public-search-pt">
+<h2>Legado: Search</h2>
+<p>Compatibilidade legada. Mantido para integrações existentes. Para novas integrações, use <a href="#resolve-navigation-code-pt">Resolve Navigation Code</a>. O endpoint <code>GET /api/Public/GetAccount</code> continua no contrato, mas não é uma etapa do fluxo recomendado.</p>
+<details>
+<summary>GET /api/Public/search</summary>
+<p>Busca por contas na base de cashback. Se a query estiver vazia, retorna as últimas 30 contas acessadas.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Documentation table / Tabela da documentação"><table>
+<thead><tr><th>Parâmetro</th><th>Tipo</th><th>Obrigatório</th><th>Descrição</th></tr></thead>
+<tbody>
+<tr><td>query</td><td>String</td><td>Não</td><td>Texto de busca (email, telefone, ID da conta ou nome). Se vazio, retorna últimas 30 contas acessadas.</td></tr>
+</tbody>
+</table>
+</div><h3>Exemplo de requisição</h3>
+<pre><code>curl -X GET "https://travelcashcustomurl.azurewebsites.net/api/Public/search?query=ana@exemplo.com" \
+  -H "x-client-key: &lt;SEU_CLIENT_KEY&gt;"</code></pre>
+<h3>Resposta 200 (exemplo)</h3>
+<pre><code>[
+  {
+    "account": {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "legalId": "00000000000",
+      "status": 1,
+      "type": "",
+      "creationTime": "2025-06-10T12:47:13.7911379+00:00",
+      "updateTime": "2025-10-06T17:27:27.03731+00:00",
+      "countryId": "00000000-0000-0000-0000-000000000000",
+      "lastAccessTime": "2025-10-06T17:16:58.2312734+00:00",
+      "lastActivity": "2025-10-06T17:16:58.2362718+00:00",
+      "expireDays": 365
+    },
+    "accountDetails": {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "name": "ANA SANTOS",
+      "email": "ana@exemplo.com",
+      "phoneNumber": "",
+      "accountId": "00000000-0000-0000-0000-000000000000",
+      "creationTime": "0001-01-01T00:00:00+00:00",
+      "updateTime": "0001-01-01T00:00:00+00:00",
+      "validEmail": false,
+      "validPhoneNumber": false
+    },
+    "balance": {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "available": 80.71,
+      "accountId": "00000000-0000-0000-0000-000000000000",
+      "creationTime": "0001-01-01T00:00:00+00:00",
+      "updateTime": "2025-09-09T16:19:51.9300407+00:00",
+      "accumulation": 80.71,
+      "spentPoints": 0
+    }
+  }
+]</code></pre>
+</details>
+</section>
+
 <div class="footer">
-© 2025 TravelBACK Cashback API – v4.2. Todos os direitos reservados.
+© 2025 TravelBACK Cashback API – v5.0. Todos os direitos reservados.
 </div>
 </main>
 </div>
